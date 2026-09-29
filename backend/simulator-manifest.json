@@ -1,0 +1,2329 @@
+{
+  "config": {
+    "seed": 12345,
+    "mode": "fixture",
+    "fleetId": "fleet_demo_001",
+    "durationMinutes": 30
+  },
+  "stats": {
+    "total": 412,
+    "processed": 354,
+    "quarantined": 57,
+    "duplicate": 1
+  },
+  "manifest": [
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_idle_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_b1_trip_0",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 0
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_idle_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_b1_trip_1",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 1
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_idle_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_idle_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_b1_trip_2",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_b1",
+      "tripIndex": 2
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_gap",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "veh_a1_trip_with_fault",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "original_event",
+      "expectedStatus": "PROCESSED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "duplicate_event",
+      "expectedStatus": "DUPLICATE",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "out_of_order_batch_wrong_conn",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_b1"
+    },
+    {
+      "scenario": "invalid_sensor_value",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a1"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    },
+    {
+      "scenario": "oem_format_change",
+      "expectedStatus": "QUARANTINED",
+      "vehicleId": "sim_veh_a2"
+    }
+  ],
+  "dbSummary": {
+    "trips": 1215,
+    "quarantineIncidents": 3
+  }
+}

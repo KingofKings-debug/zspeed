@@ -1,0 +1,134 @@
+const API_BASE = "/api";
+
+async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${url}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || `Request failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export const api = {
+  getStats: () => request<{ total: number; receiving: number; no_connection: number; attention: number }>("/vehicles/stats"),
+
+  getVehicles: (search?: string) => {
+    const q = search ? `?search=${encodeURIComponent(search)}` : "";
+    return request<{ vehicles: any[] }>(`/vehicles${q}`);
+  },
+
+  addVehicle: (vin: string, label?: string) =>
+    request<any>("/vehicles", { method: "POST", body: JSON.stringify({ vin, label }) }),
+
+  previewImport: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/vehicles/import/preview`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || "Import preview failed");
+    }
+    return res.json();
+  },
+
+  confirmImport: (batchId: string) =>
+    request<{ created: number; skipped: number }>(`/vehicles/import/${batchId}/confirm`, { method: "POST" }),
+
+  getOems: () => request<{ oems: any[] }>("/oems"),
+
+  getOem: (id: string) => request<any>(`/oems/${id}`),
+
+  getConnections: () => request<{ connections: any[] }>("/connections"),
+
+  getConnection: (id: string) => request<any>(`/connections/${id}`),
+
+  createConnection: (oemId: string, label: string) =>
+    request<any>("/connections", { method: "POST", body: JSON.stringify({ oem_id: oemId, label }) }),
+
+  authorizeConnection: (id: string, credentials: Record<string, string>) =>
+    request<{ success: boolean; error?: string }>(`/connections/${id}/authorize`, {
+      method: "POST",
+      body: JSON.stringify({ credentials }),
+    }),
+
+  discoverVehicles: (connectionId: string) =>
+    request<{ vehicles: any[] }>(`/connections/${connectionId}/discover`),
+
+  activateConnection: (connectionId: string, vehicles: { oem_vehicle_id: string; vin: string; categories: string[] }[]) =>
+    request<{ activated: number; unmapped: number }>(`/connections/${connectionId}/activate`, {
+      method: "POST",
+      body: JSON.stringify({ vehicles }),
+    }),
+
+  disconnectConnection: (id: string) =>
+    request<{ success: boolean }>(`/connections/${id}/disconnect`, { method: "POST" }),
+
+  reconnectConnection: (id: string) =>
+    request<{ success: boolean; error?: string }>(`/connections/${id}/reconnect`, { method: "POST" }),
+
+  checkHealth: (id: string) =>
+    request<{ healthy: boolean; message: string }>(`/connections/${id}/health`),
+
+  submitIntegrationRequest: (data: {
+    manufacturer_name: string;
+    fleet_size: number;
+    desired_categories: string[];
+    contact_notes?: string;
+  }) => request<any>("/integration-requests", { method: "POST", body: JSON.stringify(data) }),
+
+  getIntegrationRequests: () => request<{ requests: any[] }>("/integration-requests"),
+
+  getQuarantineIncidents: (status?: string) => {
+    const q = status ? `?status=${status}` : "";
+    return request<{ incidents: any[] }>(`/quarantine/incidents${q}`);
+  },
+
+  getQuarantineIncident: (id: string) => request<{ incident: any }>(`/quarantine/incidents/${id}`),
+
+  getIncidentVehicles: (id: string) => request<{ vehicles: any[] }>(`/quarantine/incidents/${id}/vehicles`),
+
+  acknowledgeIncident: (id: string) =>
+    request<{ success: boolean }>(`/quarantine/incidents/${id}/acknowledge`, {
+      method: "POST",
+      body: JSON.stringify({ acknowledged_by: "fleet_manager" }),
+    }),
+
+  getQuarantineRecords: (params: { incident_id?: string; vehicle_id?: string; status?: string }) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as any).toString();
+    return request<{ records: any[] }>(`/quarantine/records${q ? "?" + q : ""}`);
+  },
+
+  getQuarantineSummary: () => request<any>("/quarantine/summary"),
+
+  getVehicleDetail: (vehicleId: string) => request<any>(`/vehicles/${vehicleId}/detail`),
+
+  getVehicleTrips: (vehicleId: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const q = params.toString();
+    return request<{ trips: any[] }>(`/vehicles/${vehicleId}/trips${q ? "?" + q : ""}`);
+  },
+
+  getTripRoute: (vehicleId: string, tripId: string) =>
+    request<any>(`/vehicles/${vehicleId}/trips/${tripId}/route`),
+
+  getTripEvents: (vehicleId: string, tripId: string, eventType?: string) => {
+    const q = eventType ? `?event_type=${eventType}` : "";
+    return request<{ events: any[] }>(`/vehicles/${vehicleId}/trips/${tripId}/events${q}`);
+  },
+
+  getTripQuality: (vehicleId: string, tripId: string) =>
+    request<any>(`/vehicles/${vehicleId}/trips/${tripId}/quality`),
+};

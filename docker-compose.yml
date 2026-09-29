@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zspeed}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zspeed_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-zspeed}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zspeed -d zspeed"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { config } from "./config.js";
+import { config, validateProductionConfig } from "./config.js";
 import { runMigrations } from "./db/migrate.js";
 import { seedDatabase } from "./db/seed.js";
 import { fleetContext } from "./middleware/fleet.js";
@@ -27,9 +27,26 @@ initSocket(httpServer);
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
-app.use(express.json({ limit: "10mb" }));
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
-app.use(fleetContext);
+
+app.use((req, res, next) => {
+  if (
+    req.path.startsWith("/api/ingestion/webhooks/") ||
+    req.path === "/api/health" ||
+    req.path === "/api/sample-csv"
+  ) {
+    return next();
+  }
+  fleetContext(req, res, next);
+});
 
 app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/vehicles", vehicleDetailRoutes);
@@ -59,6 +76,7 @@ app.use(errorHandler);
 
 async function start() {
   try {
+    validateProductionConfig();
     runMigrations();
     seedDatabase();
     startWorker();

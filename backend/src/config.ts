@@ -31,19 +31,24 @@ export const config = {
     : ["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"],
   nodeEnv: process.env.NODE_ENV || "development",
   defaultFleetId: process.env.DEFAULT_FLEET_ID || "fleet_demo_001",
-  demoMode: (process.env.DEMO_MODE || "true") === "true",
+  demoMode: process.env.DEMO_MODE !== undefined
+    ? process.env.DEMO_MODE === "true"
+    : process.env.NODE_ENV !== "production",
   demoSecret: process.env.DEMO_SECRET || "zspeed-demo-2026",
-  jwtSecret: process.env.JWT_SECRET || process.env.DEMO_SECRET || "zspeed-jwt-secret-2026",
+  jwtSecret: process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? "" : "zspeed-jwt-secret-2026"),
   encryptionKey: getValidEncryptionKey(),
 };
 
 export function validateProductionConfig(): void {
+  if (config.nodeEnv === "production" && config.demoMode) {
+    throw new Error("DEMO_MODE cannot be enabled in production environment");
+  }
   if (!config.demoMode) {
-    if (!process.env.JWT_SECRET && !process.env.DEMO_SECRET) {
-      throw new Error("Production authentication secret (JWT_SECRET) must be configured when DEMO_MODE=false");
+    if (!process.env.JWT_SECRET) {
+      throw new Error("Production authentication secret (JWT_SECRET) must be configured when DEMO_MODE is disabled");
     }
     if (!process.env.ENCRYPTION_KEY) {
-      throw new Error("Production encryption key (ENCRYPTION_KEY) must be configured when DEMO_MODE=false");
+      throw new Error("Production encryption key (ENCRYPTION_KEY) must be configured when DEMO_MODE is disabled");
     }
   }
 }

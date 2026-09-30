@@ -2,38 +2,48 @@ import { Server, Socket } from "socket.io";
 import type { Server as HTTPServer } from "http";
 import { config } from "./config.js";
 import { getCatchupEvents } from "./services/fleet-event.service.js";
+import { verifyAuthToken, AuthIdentity } from "./middleware/fleet.js";
+import { queryOne } from "./db/pool.js";
 
 let io: Server;
 
-function extractFleetAuth(socket: Socket): { fleetId: string; role: string } | null {
+function extractFleetAuth(socket: Socket): AuthIdentity | null {
   const rawAuth = socket.handshake.auth || {};
   const headers = socket.handshake.headers || {};
 
-  const token =
+  const rawToken =
     rawAuth.token ||
     (typeof headers.authorization === "string" ? headers.authorization : null);
 
-  if (token) {
-    const cleanToken = token.startsWith("Bearer ") ? token.slice(7) : token;
-    if (cleanToken.startsWith("demo:")) {
-      const parts = cleanToken.split(":");
-      if (parts.length >= 3) {
-        return { fleetId: parts[1], role: parts[2] };
-      }
+  if (rawToken && typeof rawToken === "string") {
+    try {
+      return verifyAuthToken(rawToken);
+    } catch {
+      return null;
     }
   }
 
-  if (rawAuth.fleetId) {
-    return { fleetId: String(rawAuth.fleetId), role: rawAuth.role || "fleet_manager" };
-  }
-
-  const headerFleet = headers["x-fleet-id"];
-  if (typeof headerFleet === "string" && headerFleet.trim().length > 0) {
-    return { fleetId: headerFleet.trim(), role: "fleet_manager" };
-  }
-
   if (config.demoMode) {
-    return { fleetId: config.defaultFleetId, role: "fleet_manager" };
+    if (rawAuth.fleetId && typeof rawAuth.fleetId === "string") {
+      return {
+        userId: `demo_${rawAuth.fleetId}_user`,
+        fleetId: String(rawAuth.fleetId),
+        role: (rawAuth.role as any) || "fleet_manager",
+      };
+    }
+    const headerFleet = headers["x-fleet-id"];
+    if (typeof headerFleet === "string" && headerFleet.trim().length > 0) {
+      return {
+        userId: `demo_${headerFleet.trim()}_user`,
+        fleetId: headerFleet.trim(),
+        role: "fleet_manager",
+      };
+    }
+    return {
+      userId: "demo_user",
+      fleetId: config.defaultFleetId,
+      role: "fleet_manager",
+    };
   }
 
   return null;
@@ -51,15 +61,16 @@ export function initSocket(server: HTTPServer): Server {
   io.use((socket, next) => {
     const auth = extractFleetAuth(socket);
     if (!auth || !auth.fleetId) {
-      return next(new Error("Authentication error"));
+      return next(new Error("Authentication error: Unauthorized"));
     }
     socket.data.fleetId = auth.fleetId;
     socket.data.role = auth.role;
+    socket.data.userId = auth.userId;
     next();
   });
 
   io.on("connection", (socket) => {
-    const fleetId = socket.data.fleetId;
+    const fleetId = socket.data.fleetId as string;
     socket.join(`fleet:${fleetId}`);
 
     socket.emit("connected", {
@@ -77,8 +88,18 @@ export function initSocket(server: HTTPServer): Server {
     });
 
     socket.on("subscribe:vehicle", (vehicleId: string) => {
-      if (vehicleId) {
+      if (!vehicleId) return;
+      const vehicle = queryOne<{ id: string }>(
+        "SELECT id FROM vehicles WHERE id = ? AND fleet_id = ?",
+        [vehicleId, fleetId]
+      );
+      if (vehicle) {
         socket.join(`vehicle:${fleetId}:${vehicleId}`);
+      } else {
+        socket.emit("subscription:error", {
+          message: "Vehicle not found or unauthorized",
+          vehicleId,
+        });
       }
     });
 

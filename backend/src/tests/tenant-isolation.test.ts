@@ -6,8 +6,11 @@ import type { Server } from "http";
 import { runMigrations } from "../db/migrate.js";
 import { seedDatabase } from "../db/seed.js";
 import { getDb, closeDb } from "../db/pool.js";
-import { app } from "../index.js";
+import { httpServer } from "../index.js";
 import { v4 as uuid } from "uuid";
+import { io as Client, Socket as ClientSocket } from "socket.io-client";
+import { signAuthToken } from "../middleware/fleet.js";
+import { config } from "../config.js";
 
 const FLEET_A = "fleet_tenant_a";
 const FLEET_B = "fleet_tenant_b";
@@ -49,7 +52,7 @@ function seedTwoFleets() {
 
 beforeAll(async () => {
   await new Promise<void>((resolve) => {
-    server = app.listen(0, "127.0.0.1", () => {
+    server = httpServer.listen(0, "127.0.0.1", () => {
       const addr = server.address() as any;
       baseUrl = `http://127.0.0.1:${addr.port}`;
       resolve();
@@ -227,5 +230,124 @@ describe("Tenant Isolation and Auth", () => {
     });
     expect(resReplay.status).not.toBe(403);
     expect(resReplay.status).toBe(200);
+  });
+
+  it("verifies server-signed token and derives fleet and role across HTTP and sockets", async () => {
+    const validToken = signAuthToken({
+      userId: "user_alpha_mgr",
+      fleetId: FLEET_A,
+      role: "fleet_manager",
+    });
+
+    const res = await fetch(`${baseUrl}/api/vehicles`, {
+      headers: {
+        Authorization: `Bearer ${validToken}`,
+      },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const vins = data.vehicles.map((v: any) => v.vin);
+    expect(vins).toContain("VIN_ALPHA_001");
+    expect(vins).not.toContain("VIN_BETA_001");
+
+    const client: ClientSocket = Client(baseUrl, {
+      auth: { token: validToken },
+      transports: ["websocket", "polling"],
+    });
+
+    const connectData = await new Promise<any>((resolve) => {
+      client.on("connected", (d) => resolve(d));
+    });
+    expect(connectData.fleetId).toBe(FLEET_A);
+    client.close();
+  });
+
+  it("rejects forged and tampered tokens", async () => {
+    const validToken = signAuthToken({
+      userId: "user_alpha_mgr",
+      fleetId: FLEET_A,
+      role: "fleet_manager",
+    });
+
+    const forgedToken = validToken.slice(0, -6) + "000000";
+
+    const resHttp = await fetch(`${baseUrl}/api/vehicles`, {
+      headers: {
+        Authorization: `Bearer ${forgedToken}`,
+      },
+    });
+    expect(resHttp.status).toBe(401);
+
+    const client: ClientSocket = Client(baseUrl, {
+      auth: { token: forgedToken },
+      transports: ["websocket", "polling"],
+    });
+
+    const connectError = await new Promise<any>((resolve) => {
+      client.on("connect_error", (err) => resolve(err));
+    });
+    expect(connectError).toBeDefined();
+    client.close();
+  });
+
+  it("rejects unsigned demo tokens and arbitrary fleet IDs when demo mode is disabled", async () => {
+    const prevDemo = config.demoMode;
+    try {
+      config.demoMode = false;
+
+      const resDemoToken = await fetch(`${baseUrl}/api/vehicles`, {
+        headers: {
+          Authorization: `Bearer demo:${FLEET_A}:fleet_manager`,
+        },
+      });
+      expect(resDemoToken.status).toBe(401);
+
+      const resArbitrary = await fetch(`${baseUrl}/api/vehicles`, {
+        headers: {
+          "x-fleet-id": FLEET_A,
+        },
+      });
+      expect(resArbitrary.status).toBe(401);
+
+      const client: ClientSocket = Client(baseUrl, {
+        auth: { fleetId: FLEET_A },
+        transports: ["websocket", "polling"],
+      });
+
+      const connectErr = await new Promise<any>((resolve) => {
+        client.on("connect_error", (err) => resolve(err));
+      });
+      expect(connectErr).toBeDefined();
+      client.close();
+    } finally {
+      config.demoMode = prevDemo;
+    }
+  });
+
+  it("enforces vehicle ownership on socket subscriptions", async () => {
+    const tokenB = signAuthToken({
+      userId: "user_beta_mgr",
+      fleetId: FLEET_B,
+      role: "fleet_manager",
+    });
+
+    const clientB: ClientSocket = Client(baseUrl, {
+      auth: { token: tokenB },
+      transports: ["websocket", "polling"],
+    });
+
+    await new Promise<void>((resolve) => clientB.on("connect", () => resolve()));
+
+    const errorPromise = new Promise<any>((resolve) => {
+      clientB.on("subscription:error", (err) => resolve(err));
+    });
+
+    clientB.emit("subscribe:vehicle", VEH_A);
+
+    const subError = await errorPromise;
+    expect(subError.vehicleId).toBe(VEH_A);
+    expect(subError.message).toContain("unauthorized");
+
+    clientB.close();
   });
 });

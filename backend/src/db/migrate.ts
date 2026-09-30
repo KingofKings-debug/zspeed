@@ -473,5 +473,116 @@ export function runMigrations(): void {
     console.log("Migration 004_alter_normalized_events applied.");
   }
 
+  const schemaVerExisting = queryOne<{ name: string }>(
+    "SELECT name FROM _migrations WHERE name = ?",
+    ["005_canonical_schema_version"]
+  );
+
+  if (!schemaVerExisting) {
+    try { execRaw(`ALTER TABLE normalized_events ADD COLUMN canonical_schema_version TEXT DEFAULT '1.0'`); } catch {}
+    execRaw(`INSERT INTO _migrations (name) VALUES ('005_canonical_schema_version')`);
+    console.log("Migration 005_canonical_schema_version applied.");
+  }
+
+  const durableQueueExisting = queryOne<{ name: string }>(
+    "SELECT name FROM _migrations WHERE name = ?",
+    ["006_durable_queue_and_replay"]
+  );
+
+  if (!durableQueueExisting) {
+    try { execRaw(`ALTER TABLE job_queue ADD COLUMN worker_id TEXT`); } catch {}
+    try { execRaw(`ALTER TABLE job_queue ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { execRaw(`ALTER TABLE job_queue ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3`); } catch {}
+    try { execRaw(`ALTER TABLE job_queue ADD COLUMN run_after TEXT`); } catch {}
+    try { execRaw(`CREATE INDEX IF NOT EXISTS idx_job_queue_claim ON job_queue(status, run_after, priority, created_at)`); } catch {}
+
+    try { execRaw(`ALTER TABLE raw_events ADD COLUMN idempotency_key TEXT`); } catch {}
+    try { execRaw(`CREATE INDEX IF NOT EXISTS idx_raw_events_idempotency ON raw_events(connection_id, source_event_id, payload_hash)`); } catch {}
+
+    try { execRaw(`ALTER TABLE replay_jobs ADD COLUMN fleet_id TEXT`); } catch {}
+    try { execRaw(`ALTER TABLE replay_jobs ADD COLUMN incident_id TEXT`); } catch {}
+    try { execRaw(`ALTER TABLE replay_jobs ADD COLUMN started_at TEXT`); } catch {}
+    try { execRaw(`ALTER TABLE replay_jobs ADD COLUMN progress_pct INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { execRaw(`ALTER TABLE replay_jobs ADD COLUMN final_outcome TEXT`); } catch {}
+    try { execRaw(`ALTER TABLE replay_jobs ADD COLUMN error_message TEXT`); } catch {}
+
+    try { execRaw(`CREATE UNIQUE INDEX IF NOT EXISTS idx_normalized_events_raw_event_id ON normalized_events(raw_event_id)`); } catch {}
+
+    execRaw(`INSERT INTO _migrations (name) VALUES ('006_durable_queue_and_replay')`);
+    console.log("Migration 006_durable_queue_and_replay applied.");
+  }
+
+  const socketEventsExisting = queryOne<{ name: string }>(
+    "SELECT name FROM _migrations WHERE name = ?",
+    ["007_fleet_socket_events"]
+  );
+
+  if (!socketEventsExisting) {
+    execRaw(`
+      CREATE TABLE IF NOT EXISTS fleet_socket_events (
+        id TEXT PRIMARY KEY,
+        fleet_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        event_id TEXT,
+        vehicle_id TEXT,
+        source_event_time TEXT,
+        server_received_time TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    execRaw(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fleet_socket_events_seq ON fleet_socket_events(fleet_id, sequence)`);
+    execRaw(`CREATE INDEX IF NOT EXISTS idx_fleet_socket_events_cursor ON fleet_socket_events(fleet_id, sequence)`);
+    execRaw(`CREATE INDEX IF NOT EXISTS idx_fleet_socket_events_veh ON fleet_socket_events(vehicle_id)`);
+
+    execRaw(`
+      CREATE TABLE IF NOT EXISTS fleet_event_cursors (
+        fleet_id TEXT PRIMARY KEY,
+        last_sequence INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+
+    try { execRaw(`ALTER TABLE vehicles ADD COLUMN live_state TEXT NOT NULL DEFAULT 'OFFLINE'`); } catch {}
+    try { execRaw(`ALTER TABLE vehicles ADD COLUMN last_telemetry_time TEXT`); } catch {}
+
+    execRaw(`INSERT INTO _migrations (name) VALUES ('007_fleet_socket_events')`);
+    console.log("Migration 007_fleet_socket_events applied.");
+  }
+
+  const connectorExisting = queryOne<{ name: string }>(
+    "SELECT name FROM _migrations WHERE name = ?",
+    ["008_connector_cursors_and_webhooks"]
+  );
+
+  if (!connectorExisting) {
+    execRaw(`
+      CREATE TABLE IF NOT EXISTS connector_cursors (
+        connection_id TEXT NOT NULL,
+        vehicle_id TEXT NOT NULL,
+        cursor TEXT,
+        last_polled_at TEXT,
+        PRIMARY KEY(connection_id, vehicle_id)
+      )
+    `);
+
+    execRaw(`
+      CREATE TABLE IF NOT EXISTS connector_webhook_subscriptions (
+        connection_id TEXT PRIMARY KEY,
+        subscription_id TEXT NOT NULL,
+        oem_id TEXT NOT NULL,
+        secret TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    execRaw(`INSERT INTO _migrations (name) VALUES ('008_connector_cursors_and_webhooks')`);
+    console.log("Migration 008_connector_cursors_and_webhooks applied.");
+  }
+
   console.log("Migrations complete.");
+}
+
+if (process.argv[1]?.endsWith("migrate.ts") || process.argv[1]?.endsWith("migrate.js")) {
+  runMigrations();
 }

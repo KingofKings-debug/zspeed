@@ -26,6 +26,14 @@ const EVENT_ICONS: Record<string, string> = {
   SPEED_VIOLATION: "⚠",
 };
 
+export interface LivePosition {
+  latitude: number;
+  longitude: number;
+  speed?: number | null;
+  state?: string;
+  sourceEventTime?: string;
+}
+
 interface Props {
   routeGeoJson: any | null;
   tripEvents: TripEvent[];
@@ -33,6 +41,8 @@ interface Props {
   onEventSelect: (eventId: string) => void;
   hasGaps: boolean;
   noDataReason?: string;
+  livePosition?: LivePosition | null;
+  liveBreadcrumbs?: [number, number][];
 }
 
 export default function MapView({
@@ -42,8 +52,11 @@ export default function MapView({
   onEventSelect,
   hasGaps,
   noDataReason,
+  livePosition,
+  liveBreadcrumbs,
 }: Props) {
   const mapRef = useRef<MapRef>(null);
+  const hasCenteredLiveRef = useRef(false);
 
   const bounds = useMemo(() => {
     if (!routeGeoJson || !routeGeoJson.features || routeGeoJson.features.length === 0) return null;
@@ -74,6 +87,24 @@ export default function MapView({
     }
   }, [selectedEventId, tripEvents]);
 
+  useEffect(() => {
+    if (!bounds && livePosition && mapRef.current) {
+      if (!hasCenteredLiveRef.current) {
+        hasCenteredLiveRef.current = true;
+        mapRef.current.flyTo({
+          center: [livePosition.longitude, livePosition.latitude],
+          zoom: 14,
+          duration: 800,
+        });
+      } else {
+        mapRef.current.easeTo({
+          center: [livePosition.longitude, livePosition.latitude],
+          duration: 400,
+        });
+      }
+    }
+  }, [livePosition?.latitude, livePosition?.longitude, bounds]);
+
   if (noDataReason) {
     return (
       <div className="map-unavailable">
@@ -89,9 +120,9 @@ export default function MapView({
       <Map
         ref={mapRef}
         initialViewState={{
-          longitude: 0,
-          latitude: 51.5,
-          zoom: 10
+          longitude: livePosition?.longitude ?? -0.1278,
+          latitude: livePosition?.latitude ?? 51.5074,
+          zoom: 13
         }}
         mapStyle={{
           version: 8,
@@ -163,6 +194,62 @@ export default function MapView({
             </Marker>
           );
         })}
+
+        {liveBreadcrumbs && liveBreadcrumbs.length > 1 && (
+          <Source
+            id="live-breadcrumbs"
+            type="geojson"
+            data={{
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: liveBreadcrumbs,
+              },
+              properties: {},
+            }}
+          >
+            <Layer
+              id="live-breadcrumbs-line"
+              type="line"
+              layout={{ "line-join": "round", "line-cap": "round" }}
+              paint={{
+                "line-color": "#2a9d8f",
+                "line-width": 3,
+                "line-dasharray": [2, 2],
+              }}
+            />
+          </Source>
+        )}
+
+        {livePosition && (
+          <Marker
+            longitude={livePosition.longitude}
+            latitude={livePosition.latitude}
+            anchor="center"
+            style={{ zIndex: 25 }}
+          >
+            <div
+              className={`live-vehicle-marker state-${(livePosition.state || "MOVING").toLowerCase()}`}
+              title={`Live: ${livePosition.state || "Active"}${livePosition.speed !== null && livePosition.speed !== undefined ? ` (${livePosition.speed} km/h)` : ""}`}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                background: livePosition.state === "IDLE" ? "#d4a053" : livePosition.state === "STALE" ? "#888888" : "#2a9d8f",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 16,
+                border: "3px solid white",
+                boxShadow: "0 0 12px rgba(42, 157, 143, 0.8)",
+                transition: "all 0.3s ease",
+              }}
+            >
+              🚗
+            </div>
+          </Marker>
+        )}
       </Map>
 
       {hasGaps && (

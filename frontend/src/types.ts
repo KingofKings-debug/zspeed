@@ -14,6 +14,29 @@ export type VehicleDataStatus =
   | "STALE"
   | "NO_CONNECTION";
 
+export type VehicleLiveState =
+  | "CONNECTED"
+  | "DATA_RECENT"
+  | "MOVING"
+  | "IDLE"
+  | "OFFLINE"
+  | "STALE";
+
+export interface FleetSocketMessage {
+  id: string;
+  sequence: number;
+  fleetId: string;
+  eventType: string;
+  eventId: string;
+  vehicleId?: string;
+  sourceEventTime?: string;
+  serverReceivedTime: string;
+  payload: any;
+}
+
+export type MovementState = "MOVING" | "IDLE" | "PARKED" | "CHARGING";
+export type DataFreshness = "LIVE" | "STALE" | "OFFLINE" | "AWAITING_DATA";
+
 export interface Vehicle {
   id: string;
   fleet_id: string;
@@ -23,8 +46,20 @@ export interface Vehicle {
   oem_id: string | null;
   connection_id: string | null;
   data_status: VehicleDataStatus;
+  live_state?: VehicleLiveState;
+  movement_state?: MovementState | string;
+  data_freshness?: DataFreshness | string;
+  speed?: number | null;
+  speed_unit?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  battery_soc?: number | null;
+  odometer?: number | null;
+  ignition?: string | null;
   last_data_at: string | null;
   import_batch_id: string | null;
+  latest_values?: Record<string, any>;
+  signal_timestamps?: Record<string, string>;
   created_at: string;
   updated_at: string;
 }

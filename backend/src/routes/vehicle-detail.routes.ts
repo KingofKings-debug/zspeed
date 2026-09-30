@@ -8,14 +8,37 @@ import {
   enqueueProjectionRebuild,
 } from "../services/projection.service.js";
 import { query, queryOne } from "../db/pool.js";
+import { AppError } from "../middleware/error.js";
 
 const router = Router();
 
+function verifyVehicleBelongsToFleet(vehicleId: string, fleetId: string) {
+  const vehicle = queryOne<{ fleet_id: string }>(
+    "SELECT fleet_id FROM vehicles WHERE id = ?",
+    [vehicleId]
+  );
+  if (!vehicle || vehicle.fleet_id !== fleetId) {
+    throw new AppError(404, "NOT_FOUND", "Vehicle not found");
+  }
+}
+
+function verifyTripBelongsToVehicle(tripId: string, vehicleId: string) {
+  const trip = queryOne<{ vehicle_id: string }>(
+    "SELECT vehicle_id FROM trips WHERE id = ?",
+    [tripId]
+  );
+  if (!trip || trip.vehicle_id !== vehicleId) {
+    throw new AppError(404, "NOT_FOUND", "Trip not found");
+  }
+}
+
 router.get("/:vehicleId/detail", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyVehicleBelongsToFleet(req.params.vehicleId, fleetId);
     const detail = getVehicleCurrentDetail(req.params.vehicleId);
     if (!detail?.vehicle) {
-      return res.status(404).json({ error: "Vehicle not found" });
+      throw new AppError(404, "NOT_FOUND", "Vehicle not found");
     }
     res.json(detail);
   } catch (err) {
@@ -25,6 +48,8 @@ router.get("/:vehicleId/detail", (req, res, next) => {
 
 router.get("/:vehicleId/trips", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyVehicleBelongsToFleet(req.params.vehicleId, fleetId);
     const { from, to } = req.query;
     const trips = getVehicleTrips(
       req.params.vehicleId,
@@ -39,9 +64,12 @@ router.get("/:vehicleId/trips", (req, res, next) => {
 
 router.get("/:vehicleId/trips/:tripId", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyVehicleBelongsToFleet(req.params.vehicleId, fleetId);
+    verifyTripBelongsToVehicle(req.params.tripId, req.params.vehicleId);
     const data = getTripWithRoute(req.params.tripId);
     if (!data) {
-      return res.status(404).json({ error: "Trip not found" });
+      throw new AppError(404, "NOT_FOUND", "Trip not found");
     }
     res.json(data);
   } catch (err) {
@@ -51,9 +79,12 @@ router.get("/:vehicleId/trips/:tripId", (req, res, next) => {
 
 router.get("/:vehicleId/trips/:tripId/route", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyVehicleBelongsToFleet(req.params.vehicleId, fleetId);
+    verifyTripBelongsToVehicle(req.params.tripId, req.params.vehicleId);
     const geoJson = getTripGeoJson(req.params.tripId);
     if (!geoJson) {
-      return res.status(404).json({ error: "Route not found for trip" });
+      throw new AppError(404, "NOT_FOUND", "Route not found for trip");
     }
     res.json(geoJson);
   } catch (err) {
@@ -63,6 +94,9 @@ router.get("/:vehicleId/trips/:tripId/route", (req, res, next) => {
 
 router.get("/:vehicleId/trips/:tripId/events", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyVehicleBelongsToFleet(req.params.vehicleId, fleetId);
+    verifyTripBelongsToVehicle(req.params.tripId, req.params.vehicleId);
     const events = query<any>(
       `SELECT te.*, ne.canonical_values as source_canonical_values
        FROM trip_events te
@@ -85,12 +119,15 @@ router.get("/:vehicleId/trips/:tripId/events", (req, res, next) => {
 
 router.get("/:vehicleId/trips/:tripId/quality", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyVehicleBelongsToFleet(req.params.vehicleId, fleetId);
+    verifyTripBelongsToVehicle(req.params.tripId, req.params.vehicleId);
     const trip = queryOne<any>(
       "SELECT * FROM trips WHERE id = ?",
       [req.params.tripId]
     );
     if (!trip) {
-      return res.status(404).json({ error: "Trip not found" });
+      throw new AppError(404, "NOT_FOUND", "Trip not found");
     }
 
     const route = queryOne<any>(
@@ -131,6 +168,7 @@ router.get("/:vehicleId/trips/:tripId/quality", (req, res, next) => {
 router.post("/:vehicleId/rebuild", (req, res, next) => {
   try {
     const fleetId = getFleetId(req);
+    verifyVehicleBelongsToFleet(req.params.vehicleId, fleetId);
     const { from_time, to_time, reason } = req.body;
     const jobId = enqueueProjectionRebuild(
       req.params.vehicleId,
@@ -147,6 +185,8 @@ router.post("/:vehicleId/rebuild", (req, res, next) => {
 
 router.get("/:vehicleId/daily-summary", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyVehicleBelongsToFleet(req.params.vehicleId, fleetId);
     const { from, to } = req.query;
     let sql = `SELECT * FROM vehicle_daily_summary WHERE vehicle_id = ? AND projection_status = 'CURRENT'`;
     const params: unknown[] = [req.params.vehicleId];

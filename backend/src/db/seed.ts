@@ -141,11 +141,16 @@ export function seedDatabase(): void {
   );
 
   const volteraV1ProfId = "prof_voltera_v1";
+  const volteraV2ProfId = "prof_voltera_v2";
   const crestlineV1ProfId = "prof_crestline_v1";
 
   run(
     `INSERT INTO mapping_profiles (id, oem_format_version_id, mapping_version, canonical_schema_version, status) VALUES (?, ?, ?, ?, ?)`,
     [volteraV1ProfId, volteraV1Id, "1.0", "1.0", "ACTIVE"]
+  );
+  run(
+    `INSERT INTO mapping_profiles (id, oem_format_version_id, mapping_version, canonical_schema_version, status) VALUES (?, ?, ?, ?, ?)`,
+    [volteraV2ProfId, volteraV2Id, "2.0", "1.0", "ACTIVE"]
   );
   run(
     `INSERT INTO mapping_profiles (id, oem_format_version_id, mapping_version, canonical_schema_version, status) VALUES (?, ?, ?, ?, ?)`,
@@ -174,6 +179,14 @@ export function seedDatabase(): void {
     { id: uuid(), prof_id: crestlineV1ProfId, path: "state.harsh_braking", sig: "sig_harsh_brake", conv: "ENUM_MAP", enum_map: JSON.stringify({ "true": "YES", "false": "NO" }) },
     { id: uuid(), prof_id: crestlineV1ProfId, path: "state.charging", sig: "sig_charging", conv: "ENUM_MAP", enum_map: JSON.stringify({ "true": "CHARGING", "false": "NOT_CHARGING" }) },
     { id: uuid(), prof_id: crestlineV1ProfId, path: "state.fault", sig: "sig_fault_code", conv: "DIRECT", enum_map: null },
+    { id: uuid(), prof_id: volteraV2ProfId, path: "data.speed_mph", sig: "sig_speed", conv: "MPH_TO_KMH", enum_map: null },
+    { id: uuid(), prof_id: volteraV2ProfId, path: "data.charge_fraction", sig: "sig_soc", conv: "FRACTION_TO_PERCENT", enum_map: null },
+    { id: uuid(), prof_id: volteraV2ProfId, path: "metadata.odo_miles", sig: "sig_odometer", conv: "MILES_TO_KM", enum_map: null },
+    { id: uuid(), prof_id: volteraV2ProfId, path: "metadata.status", sig: "sig_ignition", conv: "ENUM_MAP", enum_map: JSON.stringify({ "running": "ON", "stopped": "OFF" }) },
+    { id: uuid(), prof_id: volteraV2ProfId, path: "data.lat", sig: "sig_latitude", conv: "DIRECT", enum_map: null },
+    { id: uuid(), prof_id: volteraV2ProfId, path: "data.lon", sig: "sig_longitude", conv: "DIRECT", enum_map: null },
+    { id: uuid(), prof_id: volteraV2ProfId, path: "metadata.timestamp", sig: "sig_event_time", conv: "DIRECT", enum_map: null },
+    { id: uuid(), prof_id: volteraV2ProfId, path: "metadata.fault_code", sig: "sig_fault_code", conv: "DIRECT", enum_map: null },
   ];
 
   for (const r of rules) {
@@ -244,4 +257,8 @@ function seedGpsSignalsAndMappings(): void {
   }
 
   console.log("GPS signals and mapping rules added.");
+}
+
+if (process.argv[1]?.endsWith("seed.ts") || process.argv[1]?.endsWith("seed.js")) {
+  seedDatabase();
 }

@@ -30,17 +30,42 @@ This is the first working milestone of the ZSpeed Fleet Operations connected-veh
 
 ## How to Run Locally
 
-### Start Backend
-1. Open a terminal and navigate to `backend`.
-2. Run `npm install`.
-3. Run `npm run dev`.
-The backend will automatically run migrations, seed the database with sample data on startup, and listen on `http://localhost:3001`.
+### 1. Start Platform Backend
+```bash
+cd backend
+npm install
+npm run dev
+```
+The backend runs migrations, seeds the database, and listens on `http://localhost:3001`.
 
-### Start Frontend
-1. Open a new terminal and navigate to `frontend`.
-2. Run `npm install`.
-3. Run `npm run dev`.
-The frontend will be available at `http://localhost:5173`.
+### 2. Start Independent OEM Simulator Backend
+```bash
+cd backend
+npm run simulator
+```
+The OEM simulator server starts on `http://localhost:3002` with its isolated database in `data/simulator.db`. For full architectural and scenario details, see [SIMULATOR.md](./SIMULATOR.md).
+
+### 3. Start Fleet Manager Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+The client-facing fleet manager frontend will be available at `http://localhost:5173`. It receives live telemetry updates via authenticated fleet-scoped Socket.IO streams without any direct dependency on the simulator console.
+
+### 4. Start Standalone OEM Simulator Console
+```bash
+cd simulator-ui
+npm install
+npm run dev
+```
+The dedicated simulator testing console will be available at `http://localhost:5174`. It communicates with the simulator backend on port 3002 to control simulation runs, seed/speed settings, delivery outage toggles, failure scenarios, and view live physical vehicle telemetry and pipeline progression diagnostics.
+
+### 5. Run Tests
+```bash
+cd backend
+npm test
+```
 
 ## Sample Data
 A downloadable sample CSV is available directly from the UI or located in `sample-data/fleet-sample.csv`. It contains mixed scenarios including valid VINs from supported OEMs, unknown manufacturers, and deliberate duplicates to test the import validation flow.

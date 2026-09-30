@@ -4,21 +4,34 @@ import { query, queryOne, run, transaction } from "../db/pool.js";
 export type FailureCategory =
   | "SCHEMA_CHANGE"
   | "INVALID_VALUE"
+  | "INVALID_COORDINATES"
+  | "INVALID_TIME"
+  | "TYPE_ERROR"
   | "MISSING_VEHICLE_MAPPING"
   | "EXPIRED_AUTH"
   | "INFRA_ERROR"
   | "UNSUPPORTED_OEM"
-  | "UNKNOWN_FORMAT";
+  | "UNKNOWN_FORMAT"
+  | "IDEMPOTENCY_CONFLICT";
 
 const RETRYABLE_CATEGORIES: FailureCategory[] = ["INFRA_ERROR"];
 
 export function categorizeFailure(reason: string): FailureCategory {
   const r = reason.toLowerCase();
-  if (r.includes("unknown format") || r.includes("format version") || r.includes("schema") || r.includes("unexpected structure")) {
-    return "SCHEMA_CHANGE";
+  if (r.includes("coordinate") || r.includes("latitude") || r.includes("longitude")) {
+    return "INVALID_COORDINATES";
   }
-  if (r.includes("invalid number") || r.includes("below min") || r.includes("above max") || r.includes("invalid value") || r.includes("type error")) {
+  if (r.includes("timestamp") || r.includes("invalid event time") || r.includes("time format") || r.includes("invalid time")) {
+    return "INVALID_TIME";
+  }
+  if (r.includes("invalid number") || r.includes("below min") || r.includes("above max") || r.includes("invalid value")) {
     return "INVALID_VALUE";
+  }
+  if (r.includes("type error") || r.includes("invalid type")) {
+    return "TYPE_ERROR";
+  }
+  if (r.includes("conflict") || r.includes("idempotency")) {
+    return "IDEMPOTENCY_CONFLICT";
   }
   if (r.includes("vehicle not mapped") || r.includes("vehicle id not found") || r.includes("not mapped")) {
     return "MISSING_VEHICLE_MAPPING";
@@ -46,6 +59,7 @@ export interface CreateQuarantineRecordParams {
   oemId: string;
   vehicleId: string | null;
   failureReason: string;
+  category?: FailureCategory;
   observedFormat?: string;
   expectedFormat?: string;
 }
@@ -56,7 +70,7 @@ export function createQuarantineRecord(params: CreateQuarantineRecordParams): st
     failureReason, observedFormat, expectedFormat,
   } = params;
 
-  const category = categorizeFailure(failureReason);
+  const category = params.category || categorizeFailure(failureReason);
 
   if (isRetryable(category)) {
     return "";
@@ -164,6 +178,8 @@ function buildIncidentTitle(
       return `Temporary connectivity issue receiving data from ${oemName}`;
     case "UNSUPPORTED_OEM":
       return `${oemName} is not yet supported for data ingestion`;
+    case "IDEMPOTENCY_CONFLICT":
+      return `${oemName} source event ID reused with conflicting payload`;
     default:
       return `Data issue from ${oemName}: ${reason.slice(0, 80)}`;
   }

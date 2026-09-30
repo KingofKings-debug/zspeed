@@ -1,26 +1,46 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const DB_PATH = path.resolve(__dirname, "../../../data/zspeed.db");
+function resolveDbPath(): string {
+  if (process.env.OVERRIDE_DB_PATH) {
+    return path.resolve(process.env.OVERRIDE_DB_PATH);
+  }
+  if (process.env.DB_PATH) {
+    return path.resolve(process.env.DB_PATH);
+  }
+  return path.resolve(process.cwd(), "data", "zspeed.db");
+}
 
 let db: Database.Database | null = null;
+let currentDbPath: string | null = null;
 
 export function getDb(): Database.Database {
-  if (!db) {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
+  const targetPath = resolveDbPath();
+  if (db && currentDbPath === targetPath) {
+    return db;
   }
+  if (db && currentDbPath !== targetPath) {
+    db.close();
+    db = null;
+  }
+  const dir = path.dirname(targetPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  db = new Database(targetPath);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  currentDbPath = targetPath;
   return db;
+}
+
+export function closeDb(): void {
+  if (db) {
+    db.close();
+    db = null;
+    currentDbPath = null;
+  }
 }
 
 export function query<T = any>(sql: string, params?: unknown[]): T[] {

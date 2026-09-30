@@ -4,6 +4,7 @@ import { vehicleRepository } from "../repositories/vehicle.repository.js";
 import { oemRepository, mappingRepository } from "../repositories/oem.repository.js";
 import { getConnector } from "../connectors/index.js";
 import type { OemConnection, OemDiscoveredVehicle } from "../types.js";
+import { recordAndPublishFleetEvent } from "./fleet-event.service.js";
 
 export function createConnection(
   fleetId: string,
@@ -13,6 +14,11 @@ export function createConnection(
   const oem = oemRepository.findById(oemId);
   if (!oem) {
     throw new Error("Unsupported OEM");
+  }
+
+  const connector = getConnector(oemId);
+  if (!connector) {
+    throw new Error("Integration unavailable for this OEM. Please submit an integration request.");
   }
 
   return connectionRepository.create({
@@ -39,19 +45,19 @@ export async function authorizeConnection(
 
   const connector = getConnector(conn.oem_id);
   if (!connector) {
-    throw new Error("No connector available for this OEM");
+    throw new Error("Integration unavailable for this OEM");
   }
 
   connectionRepository.updateStatus(connectionId, "AUTHORISING");
 
   const result = await connector.authorize(credentials);
 
-  if (result.success) {
+  if (result.success && result.accountId) {
     connectionRepository.updateAuthorized(connectionId, result.accountId);
     return { success: true };
   } else {
-    connectionRepository.updateStatus(connectionId, "NOT_CONFIGURED", result.error);
-    return { success: false, error: result.error };
+    connectionRepository.updateStatus(connectionId, "NOT_CONFIGURED", result.error || "Authorization failed");
+    return { success: false, error: result.error || "Authorization failed" };
   }
 }
 
@@ -102,7 +108,6 @@ export async function activateConnection(
 
   for (const sv of selectedVehicles) {
     const isAccessible = accessMap.get(sv.oem_vehicle_id) ?? false;
-
     const existingVehicle = vehicleRepository.findByVin(sv.vin, fleetId);
 
     if (existingVehicle && isAccessible) {
@@ -135,19 +140,21 @@ export async function activateConnection(
     }
   }
 
-  const success = await connector.activate(connectionId);
+  const success = await connector.activate(connectionId, fleetId, selectedVehicles);
   if (success) {
     connectionRepository.activate(connectionId, activated);
-
-    const mappedVehicles = vehicleRepository.findByConnection(connectionId);
-    for (const v of mappedVehicles) {
-      if (v.data_status === "AWAITING_DATA") {
-        setTimeout(() => {
-          vehicleRepository.updateLastData(v.id);
-          connectionRepository.updateLastDataReceived(connectionId);
-        }, 3000 + Math.random() * 5000);
-      }
-    }
+    recordAndPublishFleetEvent({
+      fleetId,
+      eventType: "connection:health",
+      eventId: uuid(),
+      serverReceivedTime: new Date().toISOString(),
+      payload: {
+        connectionId,
+        oemId: conn.oem_id,
+        status: "ACTIVE",
+        activated,
+      },
+    });
   }
 
   return { activated, unmapped };
@@ -173,11 +180,24 @@ export async function disconnectConnection(
   for (const v of vehicles) {
     vehicleRepository.updateConnection(v.id, fleetId, null, "NO_CONNECTION");
   }
+
+  recordAndPublishFleetEvent({
+    fleetId,
+    eventType: "connection:health",
+    eventId: uuid(),
+    serverReceivedTime: new Date().toISOString(),
+    payload: {
+      connectionId,
+      oemId: conn.oem_id,
+      status: "DISCONNECTED",
+    },
+  });
 }
 
 export async function reconnectConnection(
   connectionId: string,
-  fleetId: string
+  fleetId: string,
+  credentials?: Record<string, string>
 ): Promise<{ success: boolean; error?: string }> {
   const conn = connectionRepository.findById(connectionId, fleetId);
   if (!conn) {
@@ -190,14 +210,38 @@ export async function reconnectConnection(
   }
 
   connectionRepository.updateStatus(connectionId, "AUTHORISING");
-  const success = await connector.reconnect(connectionId);
+  const result = await connector.reconnect(connectionId, credentials);
 
-  if (success) {
+  if (result.success) {
     connectionRepository.updateStatus(connectionId, "ACTIVE");
+    await connector.activate(connectionId, fleetId, []);
+    recordAndPublishFleetEvent({
+      fleetId,
+      eventType: "connection:health",
+      eventId: uuid(),
+      serverReceivedTime: new Date().toISOString(),
+      payload: {
+        connectionId,
+        oemId: conn.oem_id,
+        status: "ACTIVE",
+      },
+    });
     return { success: true };
   } else {
-    connectionRepository.updateStatus(connectionId, "EXPIRED", "Reconnection failed");
-    return { success: false, error: "Reconnection failed" };
+    connectionRepository.updateStatus(connectionId, "EXPIRED", result.error || "Reconnection failed");
+    recordAndPublishFleetEvent({
+      fleetId,
+      eventType: "connection:health",
+      eventId: uuid(),
+      serverReceivedTime: new Date().toISOString(),
+      payload: {
+        connectionId,
+        oemId: conn.oem_id,
+        status: "EXPIRED",
+        error: result.error,
+      },
+    });
+    return { success: false, error: result.error || "Reconnection failed" };
   }
 }
 
@@ -216,6 +260,24 @@ export async function checkConnectionHealth(
   }
 
   const health = await connector.checkHealth(connectionId);
+  if (health.expired) {
+    connectionRepository.updateStatus(connectionId, "EXPIRED", health.message);
+  }
   connectionRepository.updateHealthCheck(connectionId, health.healthy, health.message);
+
+  recordAndPublishFleetEvent({
+    fleetId,
+    eventType: "connection:health",
+    eventId: uuid(),
+    serverReceivedTime: new Date().toISOString(),
+    payload: {
+      connectionId,
+      oemId: conn.oem_id,
+      status: health.expired ? "EXPIRED" : conn.status,
+      healthy: health.healthy,
+      message: health.message,
+    },
+  });
+
   return health;
 }

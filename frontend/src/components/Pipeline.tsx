@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../api";
 import type { PipelineHealth, RawEvent, MappingProfile } from "../types";
+import { subscribeToFleetEvents } from "../socket";
 
 export default function Pipeline() {
   const [health, setHealth] = useState<PipelineHealth | null>(null);
@@ -28,8 +29,16 @@ export default function Pipeline() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
+    const unsubscribe = subscribeToFleetEvents((msg) => {
+      if (
+        msg.eventType === "quarantine:count" ||
+        msg.eventType === "connection:health" ||
+        msg.eventType === "pipeline:health"
+      ) {
+        loadData();
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   async function handleReplay(profileId: string) {

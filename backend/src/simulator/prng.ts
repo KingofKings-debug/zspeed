@@ -5,7 +5,6 @@ export class PRNG {
     this.state = seed;
   }
 
-  // Linear Congruential Generator
   next(): number {
     this.state = (this.state * 1664525 + 1013904223) % 4294967296;
     return this.state / 4294967296;

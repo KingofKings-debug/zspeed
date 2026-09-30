@@ -1,15 +1,31 @@
 import { Router } from "express";
-import { getFleetId } from "../middleware/fleet.js";
+import { getFleetId, requireRole } from "../middleware/fleet.js";
 import {
   getIncidents,
   getIncidentDetail,
   getAffectedVehicles,
   getQuarantineRecords,
   acknowledgeIncident,
+  markIncidentReplaying,
 } from "../services/quarantine.service.js";
+import { replayEvents } from "../services/ingestion.service.js";
 import { query, queryOne } from "../db/pool.js";
+import { AppError } from "../middleware/error.js";
 
 const router = Router();
+
+function verifyIncidentBelongsToFleet(incidentId: string, fleetId: string) {
+  const incident = queryOne<{ fleet_id: string }>(
+    "SELECT fleet_id FROM quarantine_incidents WHERE id = ?",
+    [incidentId]
+  );
+  if (!incident) {
+    throw new AppError(404, "NOT_FOUND", "Incident not found");
+  }
+  if (incident.fleet_id !== fleetId) {
+    throw new AppError(404, "NOT_FOUND", "Incident not found");
+  }
+}
 
 router.get("/incidents", (req, res, next) => {
   try {
@@ -24,10 +40,9 @@ router.get("/incidents", (req, res, next) => {
 
 router.get("/incidents/:id", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyIncidentBelongsToFleet(req.params.id, fleetId);
     const incident = getIncidentDetail(req.params.id);
-    if (!incident) {
-      return res.status(404).json({ error: "Incident not found" });
-    }
     res.json({ incident });
   } catch (err) {
     next(err);
@@ -36,6 +51,8 @@ router.get("/incidents/:id", (req, res, next) => {
 
 router.get("/incidents/:id/vehicles", (req, res, next) => {
   try {
+    const fleetId = getFleetId(req);
+    verifyIncidentBelongsToFleet(req.params.id, fleetId);
     const vehicles = getAffectedVehicles(req.params.id);
     res.json({ vehicles });
   } catch (err) {
@@ -45,12 +62,65 @@ router.get("/incidents/:id/vehicles", (req, res, next) => {
 
 router.post("/incidents/:id/acknowledge", (req, res, next) => {
   try {
-    const acknowledgedBy = (req.body.acknowledged_by as string) || "fleet_manager";
+    const fleetId = getFleetId(req);
+    verifyIncidentBelongsToFleet(req.params.id, fleetId);
+    const acknowledgedBy = req.auth?.userId || "fleet_manager";
     const ok = acknowledgeIncident(req.params.id, acknowledgedBy);
     if (!ok) {
-      return res.status(404).json({ error: "Incident not found" });
+      throw new AppError(404, "NOT_FOUND", "Incident not found");
     }
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/incidents/:id/retry", (req, res, next) => {
+  try {
+    const fleetId = getFleetId(req);
+    verifyIncidentBelongsToFleet(req.params.id, fleetId);
+
+    const incident = queryOne<{ id: string; oem_id: string; connection_id: string; failure_category: string }>(
+      "SELECT id, oem_id, connection_id, failure_category FROM quarantine_incidents WHERE id = ?",
+      [req.params.id]
+    );
+
+    if (!incident) {
+      throw new AppError(404, "NOT_FOUND", "Incident not found");
+    }
+
+    const oemFormat = queryOne<{ id: string }>(
+      "SELECT id FROM oem_format_versions WHERE oem_id = ? ORDER BY created_at DESC LIMIT 1",
+      [incident.oem_id]
+    );
+
+    let activeProfile: { id: string } | undefined = undefined;
+    if (req.body?.mapping_profile_id) {
+      activeProfile = queryOne<{ id: string }>(
+        "SELECT id FROM mapping_profiles WHERE id = ? AND status = 'ACTIVE'",
+        [req.body.mapping_profile_id]
+      );
+    } else if (oemFormat) {
+      activeProfile = queryOne<{ id: string }>(
+        "SELECT id FROM mapping_profiles WHERE oem_format_version_id = ? AND status = 'ACTIVE'",
+        [oemFormat.id]
+      );
+    }
+
+    if (!activeProfile) {
+      throw new AppError(400, "BAD_REQUEST", "No active published mapping profile found for this incident");
+    }
+
+    markIncidentReplaying(incident.id);
+
+    const selectionCriteria = {
+      fleet_id: fleetId,
+      incident_id: incident.id,
+      connection_id: incident.connection_id,
+    };
+
+    const result = replayEvents(activeProfile.id, selectionCriteria);
+    res.json({ success: true, jobId: result.jobId, message: "Replay job queued" });
   } catch (err) {
     next(err);
   }
@@ -60,6 +130,9 @@ router.get("/records", (req, res, next) => {
   try {
     const fleetId = getFleetId(req);
     const { incident_id, vehicle_id, status } = req.query;
+    if (incident_id) {
+      verifyIncidentBelongsToFleet(incident_id as string, fleetId);
+    }
     const records = getQuarantineRecords({
       fleetId,
       incidentId: incident_id as string,

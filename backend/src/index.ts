@@ -14,11 +14,16 @@ import ingestionRoutes from "./routes/ingestion.routes.js";
 import quarantineRoutes from "./routes/quarantine.routes.js";
 import vehicleDetailRoutes from "./routes/vehicle-detail.routes.js";
 import { startWorker } from "./services/worker.service.js";
+import { initializeDeliveries } from "./services/delivery.service.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { createServer } from "http";
+import { initSocket } from "./socket.js";
 
 const app = express();
+const httpServer = createServer(app);
+initSocket(httpServer);
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
@@ -57,8 +62,9 @@ async function start() {
     runMigrations();
     seedDatabase();
     startWorker();
+    initializeDeliveries();
 
-    app.listen(config.port, () => {
+    httpServer.listen(config.port, () => {
       console.log(`Server running on port ${config.port}`);
       console.log(`CORS origin: ${config.corsOrigin}`);
     });
@@ -68,4 +74,8 @@ async function start() {
   }
 }
 
-start();
+export { app, httpServer };
+
+if (process.env.NODE_ENV !== "test") {
+  start();
+}

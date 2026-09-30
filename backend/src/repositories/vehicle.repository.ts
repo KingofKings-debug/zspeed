@@ -2,18 +2,63 @@ import { query, queryOne, run, transaction } from "../db/pool.js";
 import type { Vehicle, VehicleDataStatus } from "../types.js";
 
 export const vehicleRepository = {
-  findByFleet(fleetId: string, search?: string): Vehicle[] {
-    let sql = `SELECT * FROM vehicles WHERE fleet_id = ?`;
+  findByFleet(fleetId: string, search?: string): (Vehicle & {
+    speed?: number | null;
+    speed_unit?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    battery_soc?: number | null;
+    odometer?: number | null;
+    ignition?: string | null;
+    latest_values?: Record<string, any>;
+    signal_timestamps?: Record<string, string>;
+  })[] {
+    let sql = `
+      SELECT v.*,
+             s.latest_values,
+             s.signal_timestamps,
+             s.updated_at as state_updated_at
+      FROM vehicles v
+      LEFT JOIN vehicle_current_state s ON v.id = s.vehicle_id
+      WHERE v.fleet_id = ?
+    `;
     const params: unknown[] = [fleetId];
 
     if (search) {
-      sql += ` AND (LOWER(vin) LIKE ? OR LOWER(label) LIKE ? OR LOWER(suggested_manufacturer) LIKE ?)`;
+      sql += ` AND (LOWER(v.vin) LIKE ? OR LOWER(v.label) LIKE ? OR LOWER(v.suggested_manufacturer) LIKE ?)`;
       const term = `%${search.toLowerCase()}%`;
       params.push(term, term, term);
     }
 
-    sql += ` ORDER BY created_at DESC`;
-    return query<Vehicle>(sql, params);
+    sql += ` ORDER BY v.created_at DESC`;
+    const rows = query<any>(sql, params);
+    return rows.map((r) => {
+      let vals: Record<string, any> = {};
+      let stamps: Record<string, string> = {};
+      try {
+        if (r.latest_values) {
+          vals = typeof r.latest_values === "string" ? JSON.parse(r.latest_values) : r.latest_values;
+        }
+      } catch {}
+      try {
+        if (r.signal_timestamps) {
+          stamps = typeof r.signal_timestamps === "string" ? JSON.parse(r.signal_timestamps) : r.signal_timestamps;
+        }
+      } catch {}
+
+      return {
+        ...r,
+        speed: vals.vehicle_speed !== undefined && vals.vehicle_speed !== null ? Number(vals.vehicle_speed) : null,
+        speed_unit: "km/h",
+        latitude: vals.latitude !== undefined && vals.latitude !== null ? Number(vals.latitude) : null,
+        longitude: vals.longitude !== undefined && vals.longitude !== null ? Number(vals.longitude) : null,
+        battery_soc: vals.battery_soc !== undefined && vals.battery_soc !== null ? Number(vals.battery_soc) : null,
+        odometer: vals.odometer !== undefined && vals.odometer !== null ? Number(vals.odometer) : null,
+        ignition: vals.ignition_status || null,
+        latest_values: vals,
+        signal_timestamps: stamps,
+      };
+    });
   },
 
   findById(id: string, fleetId: string): Vehicle | undefined {

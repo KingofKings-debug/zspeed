@@ -8,6 +8,7 @@ import RequestIntegration from "./components/RequestIntegration";
 import Pipeline from "./components/Pipeline";
 import DataIssues from "./components/DataIssues";
 import VehicleDetail from "./components/VehicleDetail";
+import { useConnectionStatus } from "./store/vehicleStore";
 
 type View = "overview" | "vehicles" | "connections" | "pipeline" | "issues" | "vehicle-detail";
 
@@ -19,6 +20,7 @@ export default function App() {
   const [showRequest, setShowRequest] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const connectionStatus = useConnectionStatus();
 
   const refresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -45,6 +47,25 @@ export default function App() {
       <header className="app-header">
         <div className="app-header-brand">
           ZSpeed <span>Fleet Operations</span>
+        </div>
+        <div className="header-status-indicator" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginLeft: 16 }}>
+          <span
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              backgroundColor:
+                connectionStatus === "connected"
+                  ? "var(--color-success, #2a9d8f)"
+                  : connectionStatus === "reconnecting"
+                  ? "var(--color-warning, #e76f51)"
+                  : "var(--color-error, #e63946)",
+            }}
+          />
+          <span style={{ color: "var(--color-text-secondary, #6c757d)", textTransform: "capitalize" }}>
+            {connectionStatus === "connected" ? "Live Stream" : connectionStatus}
+          </span>
         </div>
         <nav className="app-nav">
           <button

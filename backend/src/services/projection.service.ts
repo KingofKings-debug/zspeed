@@ -14,6 +14,7 @@ import {
   buildGeoJsonRoute,
   buildBoundingBox,
 } from "./route-builder.service.js";
+import { recordAndPublishFleetEvent } from "./fleet-event.service.js";
 
 const PROCESSING_VERSION = "1";
 
@@ -188,6 +189,25 @@ function upsertTrip(
 
     buildTripRoute(tripId, points);
     buildTripEvents(tripId, vehicleId, points);
+
+    recordAndPublishFleetEvent({
+      fleetId,
+      eventType: "vehicle:trip",
+      eventId: tripId,
+      vehicleId,
+      sourceEventTime: endTime.toISOString(),
+      serverReceivedTime: new Date().toISOString(),
+      payload: {
+        tripId,
+        tripState: "COMPLETED",
+        startedAt: startTime.toISOString(),
+        endedAt: endTime.toISOString(),
+        durationSeconds,
+        distanceKm,
+        completeness,
+        tripNumber,
+      },
+    });
   });
 }
 

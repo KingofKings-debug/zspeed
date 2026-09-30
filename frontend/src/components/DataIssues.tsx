@@ -49,11 +49,20 @@ function IncidentActionButton({
   incident,
   onAcknowledge,
   onReconnect,
+  onRetry,
 }: {
   incident: QuarantineIncident;
   onAcknowledge: () => void;
   onReconnect: () => void;
+  onRetry: () => void;
 }) {
+  if (incident.status === "MAPPING_READY" || incident.status === "REPLAY_FAILED") {
+    return (
+      <button className="btn btn-primary btn-sm" onClick={onRetry}>
+        Retry replay
+      </button>
+    );
+  }
   if (incident.failure_category === "EXPIRED_AUTH" && incident.status === "UNRESOLVED") {
     return (
       <button className="btn btn-secondary btn-sm" onClick={onReconnect}>
@@ -79,11 +88,13 @@ function IncidentRow({
   onSelect,
   onAcknowledge,
   onReconnect,
+  onRetry,
 }: {
   incident: QuarantineIncident;
   onSelect: () => void;
   onAcknowledge: () => void;
   onReconnect: () => void;
+  onRetry: () => void;
 }) {
   const statusCfg = STATUS_CONFIG[incident.status] || { label: incident.status, cls: "" };
   return (
@@ -111,6 +122,7 @@ function IncidentRow({
           incident={incident}
           onAcknowledge={onAcknowledge}
           onReconnect={onReconnect}
+          onRetry={onRetry}
         />
       </td>
     </tr>
@@ -297,6 +309,15 @@ export default function DataIssues({ onViewVehicle }: Props) {
     }
   };
 
+  const handleRetry = async (id: string) => {
+    try {
+      await api.retryIncident(id);
+      loadIncidents();
+    } catch (e: any) {
+      alert(`Retry failed: ${e.message}`);
+    }
+  };
+
   return (
     <div>
       <div className="section-header">
@@ -387,6 +408,7 @@ export default function DataIssues({ onViewVehicle }: Props) {
                     onSelect={() => setSelectedIncident(incident)}
                     onAcknowledge={() => handleAcknowledge(incident.id)}
                     onReconnect={() => handleReconnect(incident)}
+                    onRetry={() => handleRetry(incident.id)}
                   />
                 ))}
               </tbody>

@@ -20,6 +20,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   getStats: () => request<{ total: number; receiving: number; no_connection: number; attention: number }>("/vehicles/stats"),
 
+  getInsights: () => request<{ safety_attention: number; service_needed: number; charging_needed: number; data_quality_issues: number }>("/vehicles/insights"),
+
   getVehicles: (search?: string) => {
     const q = search ? `?search=${encodeURIComponent(search)}` : "";
     return request<{ vehicles: any[] }>(`/vehicles${q}`);
@@ -104,6 +106,12 @@ export const api = {
       body: JSON.stringify({ acknowledged_by: "fleet_manager" }),
     }),
 
+  retryIncident: (id: string, mappingProfileId?: string) =>
+    request<{ success: boolean; jobId?: string; message?: string }>(`/quarantine/incidents/${id}/retry`, {
+      method: "POST",
+      body: JSON.stringify(mappingProfileId ? { mapping_profile_id: mappingProfileId } : {}),
+    }),
+
   getQuarantineRecords: (params: { incident_id?: string; vehicle_id?: string; status?: string }) => {
     const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as any).toString();
     return request<{ records: any[] }>(`/quarantine/records${q ? "?" + q : ""}`);
@@ -132,3 +140,4 @@ export const api = {
   getTripQuality: (vehicleId: string, tripId: string) =>
     request<any>(`/vehicles/${vehicleId}/trips/${tripId}/quality`),
 };
+

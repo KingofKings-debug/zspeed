@@ -1,25 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { runMigrations } from "../db/migrate.js";
 import { seedDatabase } from "../db/seed.js";
 import { ingestEvent } from "../services/ingestion.service.js";
 import { drainWorker } from "../services/worker.service.js";
-import { getDb } from "../db/pool.js";
+import { getDb, closeDb } from "../db/pool.js";
 import { v4 as uuid } from "uuid";
 
-const TEST_DB_PATH = path.resolve("./data/zspeed_test_pipeline.db");
 const FLEET_ID = "fleet_test_001";
 const CONN_A = "test_conn_a";
 const VEH_A1 = "test_veh_a1";
 const VEH_A2 = "test_veh_a2";
 
-function resetTestDb() {
-  if (fs.existsSync(TEST_DB_PATH)) {
-    fs.unlinkSync(TEST_DB_PATH);
-  }
-}
+let testDbPath: string;
 
 function query(sql: string, params: any[] = []) {
   return getDb().prepare(sql).all(...params);
@@ -62,14 +57,19 @@ function validVolteraV1Payload(lat = 51.5074, lon = -0.1278, ts?: string): any {
 
 describe("Ingestion pipeline integration", () => {
   beforeEach(() => {
-    process.env.OVERRIDE_DB_PATH = TEST_DB_PATH;
+    testDbPath = path.join(os.tmpdir(), `zspeed_test_pipeline_${Date.now()}_${Math.random().toString(36).slice(2)}.db`);
+    process.env.OVERRIDE_DB_PATH = testDbPath;
+    closeDb();
     runMigrations();
     seedDatabase();
     setupTestFleet();
   });
 
   afterEach(() => {
-    resetTestDb();
+    closeDb();
+    try { fs.unlinkSync(testDbPath); } catch {}
+    try { fs.unlinkSync(testDbPath + "-wal"); } catch {}
+    try { fs.unlinkSync(testDbPath + "-shm"); } catch {}
     delete process.env.OVERRIDE_DB_PATH;
   });
 
@@ -165,14 +165,19 @@ describe("Ingestion pipeline integration", () => {
 
 describe("Replay integration", () => {
   beforeEach(() => {
-    process.env.OVERRIDE_DB_PATH = TEST_DB_PATH;
+    testDbPath = path.join(os.tmpdir(), `zspeed_test_replay_${Date.now()}_${Math.random().toString(36).slice(2)}.db`);
+    process.env.OVERRIDE_DB_PATH = testDbPath;
+    closeDb();
     runMigrations();
     seedDatabase();
     setupTestFleet();
   });
 
   afterEach(() => {
-    resetTestDb();
+    closeDb();
+    try { fs.unlinkSync(testDbPath); } catch {}
+    try { fs.unlinkSync(testDbPath + "-wal"); } catch {}
+    try { fs.unlinkSync(testDbPath + "-shm"); } catch {}
     delete process.env.OVERRIDE_DB_PATH;
   });
 

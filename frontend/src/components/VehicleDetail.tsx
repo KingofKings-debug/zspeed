@@ -1,7 +1,39 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
-import type { VehicleDetail, Trip, TripEvent, TripQuality } from "../types";
-import MapView from "./MapView";
+import type { VehicleDetail, Trip, TripEvent, TripQuality, VehicleLiveState } from "../types";
+import MapView, { type LivePosition } from "./MapView";
+import { subscribeToFleetEvents, subscribeVehicleTracking, unsubscribeVehicleTracking } from "../socket";
+import { useVehicleEntry, vehicleStore } from "../store/vehicleStore";
+
+function renderLiveBadge(movementState: string | null, freshness?: string | null) {
+  if (freshness === "STALE") {
+    return <span className="status-badge status-degraded" data-testid="freshness-badge"><span className="status-dot" />Data delayed</span>;
+  }
+  if (freshness === "OFFLINE") {
+    return <span className="status-badge status-no-connection" data-testid="freshness-badge"><span className="status-dot" />Offline</span>;
+  }
+  if (!movementState) return null;
+  switch (movementState) {
+    case "MOVING":
+      return <span className="status-badge status-active" data-testid="movement-badge"><span className="status-dot" />Live · moving</span>;
+    case "IDLE":
+      return <span className="status-badge status-receiving" data-testid="movement-badge"><span className="status-dot" />Live · stationary</span>;
+    case "PARKED":
+      return <span className="status-badge status-awaiting" data-testid="movement-badge"><span className="status-dot" />Parked</span>;
+    case "CHARGING":
+      return <span className="status-badge status-active" data-testid="movement-badge"><span className="status-dot" />Charging</span>;
+    case "DATA_RECENT":
+      return <span className="status-badge status-receiving" data-testid="movement-badge"><span className="status-dot" />Data recent</span>;
+    case "STALE":
+      return <span className="status-badge status-degraded" data-testid="freshness-badge"><span className="status-dot" />Data delayed</span>;
+    case "OFFLINE":
+      return <span className="status-badge status-no-connection" data-testid="freshness-badge"><span className="status-dot" />Offline</span>;
+    case "CONNECTED":
+      return <span className="status-badge status-awaiting" data-testid="movement-badge"><span className="status-dot" />Connected</span>;
+    default:
+      return null;
+  }
+}
 
 interface Props {
   vehicleId: string;
@@ -30,9 +62,9 @@ function formatTime(d: string | null): string {
   return new Date(d).toLocaleTimeString(undefined, { timeStyle: "short" });
 }
 
-function SignalCard({ label, value, ts }: { label: string; value: any; ts?: string }) {
+function SignalCard({ label, value, ts, testId }: { label: string; value: any; ts?: string; testId?: string }) {
   return (
-    <div className="signal-card">
+    <div className="signal-card" data-testid={testId}>
       <div className="signal-card-label">{label}</div>
       <div className="signal-card-value">{value ?? "–"}</div>
       {ts && <div className="signal-card-ts">as of {formatTime(ts)}</div>}
@@ -173,6 +205,7 @@ function EventTimelineItem({
 }
 
 export default function VehicleDetailView({ vehicleId, onBack }: Props) {
+  const liveEntry = useVehicleEntry(vehicleId);
   const [detail, setDetail] = useState<VehicleDetail | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
@@ -187,18 +220,45 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
+    subscribeVehicleTracking(vehicleId);
+
+    const unsubscribe = subscribeToFleetEvents((msg) => {
+      if (msg.vehicleId === vehicleId && msg.eventType === "vehicle:trip") {
+        api.getVehicleTrips(vehicleId).then((r) => setTrips(r.trips || []));
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeVehicleTracking(vehicleId);
+    };
+  }, [vehicleId]);
+
+  useEffect(() => {
     setLoading(true);
     Promise.all([
       api.getVehicleDetail(vehicleId),
       api.getVehicleTrips(vehicleId),
-    ]).then(([detailRes, tripsRes]) => {
-      setDetail(detailRes);
-      const sortedTrips = (tripsRes.trips || []);
-      setTrips(sortedTrips);
-      if (sortedTrips.length > 0) {
-        selectTrip(sortedTrips[0]);
-      }
-    }).finally(() => setLoading(false));
+    ])
+      .then(([detailRes, tripsRes]) => {
+        setDetail(detailRes);
+        if (detailRes.vehicle) {
+          vehicleStore.initSnapshot([
+            {
+              ...detailRes.vehicle,
+              latest_values: detailRes.currentState?.latestValues || {},
+              signal_timestamps: detailRes.currentState?.signalTimestamps || {},
+              state_updated_at: detailRes.currentState?.updatedAt,
+            },
+          ]);
+        }
+        const sortedTrips = tripsRes.trips || [];
+        setTrips(sortedTrips);
+        if (sortedTrips.length > 0) {
+          selectTrip(sortedTrips[0]);
+        }
+      })
+      .finally(() => setLoading(false));
   }, [vehicleId]);
 
   const loadTrips = useCallback(() => {
@@ -220,42 +280,84 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
       api.getTripRoute(vehicleId, trip.id),
       api.getTripEvents(vehicleId, trip.id),
       api.getTripQuality(vehicleId, trip.id),
-    ]).then(([routeRes, eventsRes, qualityRes]) => {
-      setRouteGeoJson(routeRes);
-      setTripEvents(eventsRes.events || []);
-      setQuality(qualityRes);
-    }).finally(() => setTripLoading(false));
+    ])
+      .then(([routeRes, eventsRes, qualityRes]) => {
+        setRouteGeoJson(routeRes);
+        setTripEvents(eventsRes.events || []);
+        setQuality(qualityRes);
+      })
+      .finally(() => setTripLoading(false));
   }, [vehicleId]);
 
-  if (loading) {
-    return <div className="loading-state"><div className="spinner spinner-lg" /><span>Loading vehicle…</span></div>;
-  }
-
-  if (!detail?.vehicle) {
+  if (loading && !detail && !liveEntry) {
     return (
-      <div>
-        <button className="btn btn-secondary" onClick={onBack}>← Back</button>
-        <div className="alert alert-error" style={{ marginTop: 16 }}>Vehicle not found.</div>
+      <div className="loading-state">
+        <div className="spinner spinner-lg" />
+        <div style={{ marginTop: 12 }}>Loading vehicle profile...</div>
       </div>
     );
   }
 
-  const { vehicle, currentState, unresolvedQuarantineCount } = detail;
-  const latestValues = currentState?.latestValues || {};
-  const signalTimestamps = currentState?.signalTimestamps || {};
+  const vehicle = liveEntry?.vehicle || detail?.vehicle;
 
-  const noRouteReason = selectedTrip && !tripLoading && (!routeGeoJson || !routeGeoJson.features || routeGeoJson.features.length === 0)
-    ? "No GPS data recorded for this trip"
+  if (!vehicle) {
+    return (
+      <div className="empty-state">
+        <div className="empty-state-title">Vehicle not found</div>
+        <button className="btn btn-secondary" onClick={onBack} style={{ marginTop: 12 }}>
+          ← Back to fleet
+        </button>
+      </div>
+    );
+  }
+
+  const latestValues = {
+    ...(detail?.currentState?.latestValues || {}),
+    ...(liveEntry?.latestValues || {}),
+  };
+  const signalTimestamps = {
+    ...(detail?.currentState?.signalTimestamps || {}),
+    ...(liveEntry?.signalTimestamps || {}),
+  };
+
+  const currentSpeed = liveEntry?.speed !== null && liveEntry?.speed !== undefined
+    ? liveEntry.speed
+    : (latestValues.vehicle_speed !== undefined && latestValues.vehicle_speed !== null ? Number(latestValues.vehicle_speed) : null);
+
+  const speedFormatted = currentSpeed !== null
+    ? `${currentSpeed.toFixed(1)} ${liveEntry?.speedUnit || "km/h"}`
     : undefined;
+
+  const currentLat = liveEntry?.latitude ?? (latestValues.latitude !== undefined ? Number(latestValues.latitude) : null);
+  const currentLon = liveEntry?.longitude ?? (latestValues.longitude !== undefined ? Number(latestValues.longitude) : null);
+
+  const livePositionData: LivePosition | null = currentLat !== null && currentLon !== null ? {
+    latitude: currentLat,
+    longitude: currentLon,
+    speed: currentSpeed,
+    state: liveEntry?.movementState || vehicle.live_state || "CONNECTED",
+    sourceEventTime: liveEntry?.lastDataAt || detail?.currentState?.updatedAt,
+  } : null;
+
+  const breadcrumbsData = liveEntry?.breadcrumbs && liveEntry.breadcrumbs.length > 0
+    ? liveEntry.breadcrumbs
+    : (currentLat && currentLon ? [[currentLon, currentLat] as [number, number]] : []);
+
+  const movementState = liveEntry?.movementState || vehicle.live_state || null;
+  const dataFreshness = liveEntry?.dataFreshness || null;
+  const unresolvedQuarantineCount = detail?.unresolvedQuarantineCount || 0;
 
   return (
     <div className="vehicle-detail-layout">
       <div className="vehicle-detail-header">
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Back</button>
         <div>
-          <h1 className="section-title">{vehicle.label || vehicle.vin}</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h1 className="section-title" style={{ margin: 0 }}>{vehicle.label || vehicle.vin}</h1>
+            {renderLiveBadge(movementState, dataFreshness)}
+          </div>
           <div className="text-muted" style={{ fontSize: 13 }}>
-            {vehicle.vin} · {vehicle.oem_name || "–"}
+            {vehicle.vin} · {(detail?.vehicle as any)?.oem_name || vehicle.suggested_manufacturer || "–"}
           </div>
         </div>
         {unresolvedQuarantineCount > 0 && (
@@ -267,12 +369,39 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
       </div>
 
       <div className="vehicle-detail-signals">
-        <SignalCard label="Speed" value={latestValues.vehicle_speed !== undefined ? `${latestValues.vehicle_speed?.toFixed(1)} km/h` : undefined} ts={signalTimestamps.vehicle_speed} />
-        <SignalCard label="Battery SOC" value={latestValues.battery_soc !== undefined ? `${latestValues.battery_soc?.toFixed(1)}%` : undefined} ts={signalTimestamps.battery_soc} />
-        <SignalCard label="Odometer" value={latestValues.odometer !== undefined ? `${latestValues.odometer?.toFixed(0)} km` : undefined} ts={signalTimestamps.odometer} />
-        <SignalCard label="Ignition" value={latestValues.ignition_status} ts={signalTimestamps.ignition_status} />
-        <SignalCard label="Location" value={latestValues.latitude ? `${latestValues.latitude?.toFixed(4)}, ${latestValues.longitude?.toFixed(4)}` : undefined} ts={signalTimestamps.latitude} />
-        <SignalCard label="Last signal" value={currentState?.updatedAt ? formatDate(currentState.updatedAt) : undefined} />
+        <div className="signal-card" data-testid="speed-card">
+          <div className="signal-card-label">Speed</div>
+          <div className="signal-card-value" data-testid="speed-value">{speedFormatted ?? "–"}</div>
+          {signalTimestamps.vehicle_speed && (
+            <div className="signal-card-ts">
+              as of {formatTime(signalTimestamps.vehicle_speed)} ({liveEntry?.lastUpdatedAge || "live"})
+            </div>
+          )}
+        </div>
+        <SignalCard
+          label="Battery SOC"
+          value={latestValues.battery_soc !== undefined && latestValues.battery_soc !== null ? `${Number(latestValues.battery_soc).toFixed(1)}%` : undefined}
+          ts={signalTimestamps.battery_soc}
+        />
+        <SignalCard
+          label="Odometer"
+          value={latestValues.odometer !== undefined && latestValues.odometer !== null ? `${Number(latestValues.odometer).toFixed(0)} km` : undefined}
+          ts={signalTimestamps.odometer}
+        />
+        <SignalCard
+          label="Ignition"
+          value={latestValues.ignition_status || liveEntry?.ignition}
+          ts={signalTimestamps.ignition_status}
+        />
+        <SignalCard
+          label="Location"
+          value={currentLat && currentLon ? `${currentLat.toFixed(4)}, ${currentLon.toFixed(4)}` : undefined}
+          ts={signalTimestamps.latitude}
+        />
+        <SignalCard
+          label="Last signal"
+          value={liveEntry?.lastDataAt ? formatDate(liveEntry.lastDataAt) : (detail?.currentState?.updatedAt ? formatDate(detail.currentState.updatedAt) : undefined)}
+        />
       </div>
 
       <div className="vehicle-detail-body">
@@ -308,12 +437,12 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {trips.map((trip) => (
+                    {trips.map((t) => (
                       <TripRow
-                        key={trip.id}
-                        trip={trip}
-                        selected={selectedTrip?.id === trip.id}
-                        onClick={() => selectTrip(trip)}
+                        key={t.id}
+                        trip={t}
+                        selected={selectedTrip?.id === t.id}
+                        onClick={() => selectTrip(t)}
                       />
                     ))}
                   </tbody>
@@ -321,70 +450,49 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
               </div>
             )}
           </div>
+
+          {selectedTrip && (
+            <div className="card">
+              <div className="card-header">
+                <span className="card-header-title">
+                  Trip events ({tripEvents.length})
+                </span>
+              </div>
+              <div style={{ padding: "12px 16px" }}>
+                <DataQualityBanner quality={quality} />
+                {tripLoading ? (
+                  <div className="loading-state" style={{ padding: 20 }}><div className="spinner" /></div>
+                ) : tripEvents.length === 0 ? (
+                  <div className="empty-state-text" style={{ padding: 12 }}>No notable events in this trip</div>
+                ) : (
+                  <div className="timeline">
+                    {tripEvents.map((evt) => (
+                      <EventTimelineItem
+                        key={evt.id}
+                        event={evt}
+                        selected={selectedEventId === evt.id}
+                        onClick={() => setSelectedEventId(evt.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="vehicle-detail-main">
-          {selectedTrip && (
-            <>
-              <div className="selected-trip-header">
-                <div>
-                  <strong>
-                    {new Date(selectedTrip.started_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
-                  </strong>
-                  <span className="text-muted" style={{ marginLeft: 8, fontSize: 13 }}>
-                    {formatTime(selectedTrip.started_at)} → {formatTime(selectedTrip.ended_at)}
-                    {" · "}{formatDist(selectedTrip.distance_km)}
-                    {" · "}{formatDuration(selectedTrip.duration_seconds)}
-                  </span>
-                </div>
-              </div>
-
-              <DataQualityBanner quality={quality} />
-
-              {tripLoading ? (
-                <div className="loading-state"><div className="spinner spinner-lg" /></div>
-              ) : (
-                <div className="trip-detail-grid">
-                  <div className="trip-map-panel">
-                    <MapView
-                      routeGeoJson={routeGeoJson}
-                      tripEvents={tripEvents}
-                      selectedEventId={selectedEventId}
-                      onEventSelect={setSelectedEventId}
-                      hasGaps={quality?.hasGaps || false}
-                      noDataReason={noRouteReason}
-                    />
-                  </div>
-                  <div className="trip-timeline-panel">
-                    <div className="timeline-header">Event timeline</div>
-                    {tripEvents.length === 0 ? (
-                      <div className="empty-state" style={{ padding: 20 }}>
-                        <div className="empty-state-text">No events recorded</div>
-                      </div>
-                    ) : (
-                      <div className="timeline-scroll">
-                        {tripEvents.map((evt) => (
-                          <EventTimelineItem
-                            key={evt.id}
-                            event={evt}
-                            selected={selectedEventId === evt.id}
-                            onClick={() => setSelectedEventId(selectedEventId === evt.id ? null : evt.id)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {!selectedTrip && trips.length === 0 && !tripsLoading && (
-            <div className="empty-state">
-              <div className="empty-state-title">No trips yet</div>
-              <div className="empty-state-text">GPS events are needed to build trip history.</div>
-            </div>
-          )}
+          <div className="card" style={{ height: "100%", minHeight: 450 }}>
+            <MapView
+              routeGeoJson={routeGeoJson}
+              tripEvents={tripEvents}
+              selectedEventId={selectedEventId}
+              onEventSelect={setSelectedEventId}
+              hasGaps={Boolean(selectedTrip?.has_gaps)}
+              livePosition={livePositionData}
+              liveBreadcrumbs={breadcrumbsData}
+            />
+          </div>
         </div>
       </div>
     </div>

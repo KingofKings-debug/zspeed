@@ -2,6 +2,7 @@ import { Router } from "express";
 import { oemRepository } from "../repositories/oem.repository.js";
 import { vehicleRepository } from "../repositories/vehicle.repository.js";
 import { connectionRepository } from "../repositories/connection.repository.js";
+import { getConnector } from "../connectors/index.js";
 import { getFleetId } from "../middleware/fleet.js";
 
 const router = Router();
@@ -14,11 +15,14 @@ router.get("/", async (req, res, next) => {
     const oemsWithCounts = oems.map((oem) => {
       const vehicles = vehicleRepository.findByOem(oem.id, fleetId);
       const connections = connectionRepository.findByOem(oem.id, fleetId);
-
+      const connector = getConnector(oem.id);
       const activeConnection = connections.find((c) => c.status === "ACTIVE");
 
       return {
         ...oem,
+        integration_available: !!connector,
+        integration_status: connector ? "AVAILABLE" : "UNAVAILABLE",
+        is_demo: connector?.isDemo ?? false,
         vehicle_count: vehicles.length,
         connections: connections.map((c) => ({
           id: c.id,
@@ -46,7 +50,13 @@ router.get("/:id", async (req, res, next) => {
       res.status(404).json({ status: 404, code: "NOT_FOUND", message: "OEM not found" });
       return;
     }
-    res.json(oem);
+    const connector = getConnector(oem.id);
+    res.json({
+      ...oem,
+      integration_available: !!connector,
+      integration_status: connector ? "AVAILABLE" : "UNAVAILABLE",
+      is_demo: connector?.isDemo ?? false,
+    });
   } catch (err) {
     next(err);
   }

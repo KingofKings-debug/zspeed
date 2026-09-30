@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../api";
-import type { VehicleStats, SupportedOem } from "../types";
+import type { SupportedOem } from "../types";
+import { useFleetOverview, vehicleStore } from "../store/vehicleStore";
 
 interface OverviewProps {
   onNavigate: (view: string) => void;
@@ -8,19 +9,24 @@ interface OverviewProps {
 }
 
 export default function Overview({ onNavigate, onImport }: OverviewProps) {
-  const [stats, setStats] = useState<VehicleStats | null>(null);
+  const storeStats = useFleetOverview();
   const [oems, setOems] = useState<SupportedOem[]>([]);
+  const [insights, setInsights] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [statsData, oemsData] = await Promise.all([
-          api.getStats(),
+        const [vehiclesData, oemsData, insightsData] = await Promise.all([
+          api.getVehicles(),
           api.getOems(),
+          api.getInsights(),
         ]);
-        setStats(statsData);
-        setOems(oemsData.oems);
+        if (vehiclesData?.vehicles) {
+          vehicleStore.initializeFromSnapshot(vehiclesData.vehicles);
+        }
+        setOems(oemsData.oems || []);
+        setInsights(insightsData);
       } catch (err) {
         console.error("Failed to load overview:", err);
       } finally {
@@ -30,7 +36,7 @@ export default function Overview({ onNavigate, onImport }: OverviewProps) {
     load();
   }, []);
 
-  if (loading) {
+  if (loading && storeStats.total === 0) {
     return (
       <div className="loading-state">
         <div className="spinner spinner-lg" />
@@ -64,23 +70,53 @@ export default function Overview({ onNavigate, onImport }: OverviewProps) {
         </div>
       </div>
 
-      {stats && (
-        <div className="stats-grid">
-          <div className="stat-card">
-            <span className="stat-card-label">Total vehicles</span>
-            <span className="stat-card-value">{stats.total}</span>
+      <div className="stats-grid">
+        <div className="stat-card">
+          <span className="stat-card-label">Total vehicles</span>
+          <span className="stat-card-value">{storeStats.total}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card-label">Receiving data</span>
+          <span className="stat-card-value success">{storeStats.receiving}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card-label">Moving</span>
+          <span className="stat-card-value" style={{ color: "var(--color-primary)" }}>{storeStats.moving}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card-label">Idle / Parked</span>
+          <span className="stat-card-value warning">{storeStats.idle + storeStats.parked}</span>
+        </div>
+      </div>
+
+      {insights && (
+        <div className="card mb-4 mt-4" style={{ marginTop: 24, marginBottom: 24 }}>
+          <div className="card-header">
+            <span className="card-header-title">Actionable Insights</span>
           </div>
-          <div className="stat-card">
-            <span className="stat-card-label">Receiving data</span>
-            <span className="stat-card-value success">{stats.receiving}</span>
-          </div>
-          <div className="stat-card">
-            <span className="stat-card-label">Connection required</span>
-            <span className="stat-card-value warning">{stats.no_connection}</span>
-          </div>
-          <div className="stat-card">
-            <span className="stat-card-label">Attention needed</span>
-            <span className="stat-card-value error">{stats.attention}</span>
+          <div className="card-body" style={{ padding: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 1, background: "var(--color-border-light)" }}>
+              <div style={{ background: "var(--color-bg-primary)", padding: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-error)", marginBottom: 4 }}>Service Needed</div>
+                <div style={{ fontSize: 24, fontWeight: 700 }}>{insights.service_needed}</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Active diagnostic faults</div>
+              </div>
+              <div style={{ background: "var(--color-bg-primary)", padding: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-warning)", marginBottom: 4 }}>Safety Attention</div>
+                <div style={{ fontSize: 24, fontWeight: 700 }}>{insights.safety_attention}</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Recent harsh braking / speeding</div>
+              </div>
+              <div style={{ background: "var(--color-bg-primary)", padding: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-primary)", marginBottom: 4 }}>Charging Required</div>
+                <div style={{ fontSize: 24, fontWeight: 700 }}>{insights.charging_needed}</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Battery below 20%</div>
+              </div>
+              <div style={{ background: "var(--color-bg-primary)", padding: 16, cursor: "pointer" }} onClick={() => onNavigate("issues")}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-warning)", marginBottom: 4 }}>Data Quality</div>
+                <div style={{ fontSize: 24, fontWeight: 700 }}>{insights.data_quality_issues}</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Vehicles with unresolved quarantine</div>
+              </div>
+            </div>
           </div>
         </div>
       )}

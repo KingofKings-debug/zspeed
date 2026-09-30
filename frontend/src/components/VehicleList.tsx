@@ -1,27 +1,33 @@
 import { useState, useEffect } from "react";
 import { api } from "../api";
-import type { Vehicle } from "../types";
+import { useFleetVehicles, vehicleStore, type LiveVehicleEntry } from "../store/vehicleStore";
 
-function statusLabel(status: string): { text: string; className: string } {
-  switch (status) {
-    case "RECEIVING": return { text: "Receiving data", className: "status-receiving" };
-    case "AWAITING_DATA": return { text: "Awaiting data", className: "status-awaiting" };
-    case "NO_CONNECTION": return { text: "No connection", className: "status-no-connection" };
-    case "UNAUTHORISED_VEHICLE": return { text: "Unauthorised", className: "status-error" };
-    case "STALE": return { text: "Stale data", className: "status-degraded" };
-    default: return { text: status, className: "status-no-connection" };
+function renderMovementBadge(state: string) {
+  switch (state) {
+    case "MOVING":
+      return <span className="status-badge status-active"><span className="status-dot" />Moving</span>;
+    case "IDLE":
+      return <span className="status-badge status-receiving"><span className="status-dot" />Stationary</span>;
+    case "PARKED":
+      return <span className="status-badge status-awaiting"><span className="status-dot" />Parked</span>;
+    case "CHARGING":
+      return <span className="status-badge status-active"><span className="status-dot" />Charging</span>;
+    default:
+      return <span className="status-badge status-awaiting"><span className="status-dot" />{state}</span>;
   }
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "\u2014";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function renderFreshnessBadge(freshness: string) {
+  switch (freshness) {
+    case "LIVE":
+      return <span className="status-badge status-active"><span className="status-dot" />Live</span>;
+    case "STALE":
+      return <span className="status-badge status-degraded"><span className="status-dot" />Delayed</span>;
+    case "OFFLINE":
+      return <span className="status-badge status-no-connection"><span className="status-dot" />Offline</span>;
+    default:
+      return <span className="status-badge status-awaiting"><span className="status-dot" />Awaiting data</span>;
+  }
 }
 
 interface VehicleListProps {
@@ -30,7 +36,7 @@ interface VehicleListProps {
 }
 
 export default function VehicleList({ onImport, onSelectVehicle }: VehicleListProps) {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const storeEntries = useFleetVehicles();
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [addVin, setAddVin] = useState("");
@@ -43,7 +49,7 @@ export default function VehicleList({ onImport, onSelectVehicle }: VehicleListPr
     try {
       setLoading(true);
       const data = await api.getVehicles(searchTerm);
-      setVehicles(data.vehicles);
+      vehicleStore.initSnapshot(data.vehicles);
     } catch (err) {
       console.error("Failed to load vehicles:", err);
     } finally {
@@ -79,12 +85,23 @@ export default function VehicleList({ onImport, onSelectVehicle }: VehicleListPr
     }
   }
 
+  const filteredEntries = storeEntries.filter((entry) => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    const v = entry.vehicle;
+    return (
+      v.vin.toLowerCase().includes(term) ||
+      (v.label && v.label.toLowerCase().includes(term)) ||
+      (v.suggested_manufacturer && v.suggested_manufacturer.toLowerCase().includes(term))
+    );
+  });
+
   return (
     <div>
       <div className="section-header">
         <div>
           <h1 className="section-title">Vehicles</h1>
-          <p className="section-subtitle">{vehicles.length} vehicle{vehicles.length !== 1 ? "s" : ""} in fleet</p>
+          <p className="section-subtitle">{storeEntries.length} vehicle{storeEntries.length !== 1 ? "s" : ""} in fleet</p>
         </div>
         <div className="flex gap-2">
           <button className="btn btn-secondary" onClick={() => setShowAdd(!showAdd)}>
@@ -147,12 +164,12 @@ export default function VehicleList({ onImport, onSelectVehicle }: VehicleListPr
           </div>
         </div>
 
-        {loading ? (
+        {loading && storeEntries.length === 0 ? (
           <div className="loading-state">
             <div className="spinner spinner-lg" />
             Loading vehicles...
           </div>
-        ) : vehicles.length === 0 ? (
+        ) : filteredEntries.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-title">No vehicles found</div>
             <p className="empty-state-text">
@@ -169,26 +186,34 @@ export default function VehicleList({ onImport, onSelectVehicle }: VehicleListPr
                 <th>Label</th>
                 <th>VIN</th>
                 <th>Manufacturer</th>
-                <th>Data status</th>
+                <th>Speed</th>
+                <th>Movement</th>
+                <th>Freshness</th>
                 <th>Last update</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {vehicles.map((v) => {
-                const status = statusLabel(v.data_status);
+              {filteredEntries.map((entry) => {
+                const v = entry.vehicle;
                 return (
-                  <tr key={v.id} style={{ cursor: onSelectVehicle ? "pointer" : undefined }} onClick={() => onSelectVehicle?.(v.id)}>
+                  <tr
+                    key={v.id}
+                    data-testid={`vehicle-row-${v.id}`}
+                    style={{ cursor: onSelectVehicle ? "pointer" : undefined }}
+                    onClick={() => onSelectVehicle?.(v.id)}
+                  >
                     <td>{v.label || <span className="text-muted">No label</span>}</td>
                     <td className="mono">{v.vin}</td>
                     <td>{v.suggested_manufacturer || <span className="text-muted">Unknown</span>}</td>
-                    <td>
-                      <span className={`status-badge ${status.className}`}>
-                        <span className="status-dot" />
-                        {status.text}
-                      </span>
+                    <td data-testid={`vehicle-speed-${v.id}`} style={{ fontWeight: 600 }}>
+                      {entry.speed !== null && entry.speed !== undefined
+                        ? `${entry.speed.toFixed(1)} ${entry.speedUnit || "km/h"}`
+                        : <span className="text-muted">–</span>}
                     </td>
-                    <td className="text-sm text-muted">{formatDate(v.last_data_at)}</td>
+                    <td>{renderMovementBadge(entry.movementState)}</td>
+                    <td>{renderFreshnessBadge(entry.dataFreshness)}</td>
+                    <td className="text-sm text-muted">{entry.lastUpdatedAge}</td>
                     <td onClick={(e) => e.stopPropagation()}>
                       {onSelectVehicle && (
                         <button className="btn btn-ghost btn-sm" onClick={() => onSelectVehicle(v.id)}>

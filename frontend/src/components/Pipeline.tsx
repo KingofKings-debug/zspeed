@@ -55,27 +55,6 @@ export default function Pipeline() {
     }
   }
 
-  async function simulateV2Event() {
-    try {
-      await fetch("/api/ingestion/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          connection_id: "conn_simulate",
-          source_vehicle_id: "veh_sim_123",
-          source_event_id: `evt_${Date.now()}`,
-          payload: {
-            data: { speed_mph: 65, charge_fraction: 0.8 },
-            metadata: { odo_miles: 15000, status: "running" }
-          }
-        })
-      });
-      loadData();
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
   if (loading && !health) {
     return <div className="p-8">Loading pipeline data...</div>;
   }
@@ -87,9 +66,6 @@ export default function Pipeline() {
           <h1 className="section-title">Data Pipeline</h1>
           <p className="section-subtitle">Manage ingestion health, quarantines, and mapping profiles</p>
         </div>
-        <button className="btn btn-primary" onClick={simulateV2Event}>
-          Simulate Unknown V2 Event
-        </button>
       </div>
 
       <div style={{ display: "flex", gap: "16px", marginBottom: "24px", borderBottom: "1px solid var(--color-border-light)", paddingBottom: "12px" }}>

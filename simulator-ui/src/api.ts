@@ -2,11 +2,14 @@ import type { SimStatus, SimVehicle, SimMetrics, SimScenario } from "./types";
 
 const SIM_API_BASE = (((import.meta as any).env?.VITE_SIMULATOR_URL as string) || "").replace(/\/$/, "");
 
+const SIM_ADMIN_KEY = (((import.meta as any).env?.VITE_SIMULATOR_ADMIN_KEY as string) || "sim-admin-secret-2026");
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${SIM_API_BASE}/api/simulator${path}`;
   const res = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
+      "X-Simulator-Admin-Key": SIM_ADMIN_KEY,
       ...options.headers,
     },
     ...options,

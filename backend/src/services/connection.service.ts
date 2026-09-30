@@ -5,6 +5,7 @@ import { oemRepository, mappingRepository } from "../repositories/oem.repository
 import { getConnector } from "../connectors/index.js";
 import type { OemConnection, OemDiscoveredVehicle } from "../types.js";
 import { recordAndPublishFleetEvent } from "./fleet-event.service.js";
+import { storeSecret } from "./vault.service.js";
 
 export function createConnection(
   fleetId: string,
@@ -53,7 +54,8 @@ export async function authorizeConnection(
   const result = await connector.authorize(credentials);
 
   if (result.success && result.accountId) {
-    connectionRepository.updateAuthorized(connectionId, result.accountId);
+    const vaultRef = storeSecret(credentials);
+    connectionRepository.updateAuthorized(connectionId, result.accountId, vaultRef);
     return { success: true };
   } else {
     connectionRepository.updateStatus(connectionId, "NOT_CONFIGURED", result.error || "Authorization failed");

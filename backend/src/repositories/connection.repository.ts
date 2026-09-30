@@ -48,10 +48,10 @@ export const connectionRepository = {
     );
   },
 
-  updateAuthorized(id: string, accountId: string): void {
+  updateAuthorized(id: string, accountId: string, credentialsVaultId?: string | null): void {
     run(
-      "UPDATE oem_connections SET account_identifier = ?, authorized_at = datetime('now'), status = 'VERIFYING', updated_at = datetime('now') WHERE id = ?",
-      [accountId, id]
+      "UPDATE oem_connections SET account_identifier = ?, credentials_vault_id = COALESCE(?, credentials_vault_id), authorized_at = datetime('now'), status = 'VERIFYING', updated_at = datetime('now') WHERE id = ?",
+      [accountId, credentialsVaultId || null, id]
     );
   },
 

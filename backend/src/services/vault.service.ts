@@ -1,5 +1,7 @@
 import { randomBytes, createCipheriv, createDecipheriv } from "crypto";
 import { v4 as uuid } from "uuid";
+import { config } from "../config.js";
+import { queryOne, run } from "../db/pool.js";
 
 const SENSITIVE_KEYS = new Set([
   "password",
@@ -13,39 +15,44 @@ const SENSITIVE_KEYS = new Set([
   "credentials",
 ]);
 
-const ENCRYPTION_KEY = randomBytes(32);
-const secretStore = new Map<string, { iv: string; tag: string; encrypted: string }>();
-
 export function storeSecret(data: Record<string, any>): string {
   const secretRef = `sec_${uuid()}`;
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  const cipher = createCipheriv("aes-256-gcm", config.encryptionKey, iv);
   const text = JSON.stringify(data);
   let encrypted = cipher.update(text, "utf8", "hex");
   encrypted += cipher.final("hex");
   const tag = cipher.getAuthTag().toString("hex");
 
-  secretStore.set(secretRef, {
-    iv: iv.toString("hex"),
-    tag,
-    encrypted,
-  });
+  run(
+    `INSERT INTO encrypted_credentials (secret_ref, iv, tag, encrypted_data, created_at, updated_at)
+     VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+     ON CONFLICT(secret_ref) DO UPDATE SET
+       iv = excluded.iv,
+       tag = excluded.tag,
+       encrypted_data = excluded.encrypted_data,
+       updated_at = datetime('now')`,
+    [secretRef, iv.toString("hex"), tag, encrypted]
+  );
 
   return secretRef;
 }
 
 export function getSecret(secretRef: string): Record<string, any> | null {
-  const entry = secretStore.get(secretRef);
-  if (!entry) return null;
-
   try {
+    const row = queryOne<{ iv: string; tag: string; encrypted_data: string }>(
+      "SELECT iv, tag, encrypted_data FROM encrypted_credentials WHERE secret_ref = ?",
+      [secretRef]
+    );
+    if (!row) return null;
+
     const decipher = createDecipheriv(
       "aes-256-gcm",
-      ENCRYPTION_KEY,
-      Buffer.from(entry.iv, "hex")
+      config.encryptionKey,
+      Buffer.from(row.iv, "hex")
     );
-    decipher.setAuthTag(Buffer.from(entry.tag, "hex"));
-    let decrypted = decipher.update(entry.encrypted, "hex", "utf8");
+    decipher.setAuthTag(Buffer.from(row.tag, "hex"));
+    let decrypted = decipher.update(row.encrypted_data, "hex", "utf8");
     decrypted += decipher.final("utf8");
     return JSON.parse(decrypted);
   } catch {

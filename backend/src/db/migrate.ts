@@ -580,6 +580,43 @@ export function runMigrations(): void {
     console.log("Migration 008_connector_cursors_and_webhooks applied.");
   }
 
+  const vaultExisting = queryOne<{ name: string }>(
+    "SELECT name FROM _migrations WHERE name = ?",
+    ["009_durable_vault_and_insights"]
+  );
+
+  if (!vaultExisting) {
+    execRaw(`
+      CREATE TABLE IF NOT EXISTS encrypted_credentials (
+        secret_ref TEXT PRIMARY KEY,
+        iv TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        encrypted_data TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+
+    try {
+      execRaw(`ALTER TABLE oem_connections ADD COLUMN credentials_vault_id TEXT`);
+    } catch {}
+
+    execRaw(`
+      CREATE TABLE IF NOT EXISTS fleet_insights (
+        fleet_id TEXT NOT NULL,
+        metric_key TEXT NOT NULL,
+        affected_count INTEGER NOT NULL DEFAULT 0,
+        affected_vehicles TEXT NOT NULL DEFAULT '[]',
+        details TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY(fleet_id, metric_key)
+      )
+    `);
+
+    execRaw(`INSERT INTO _migrations (name) VALUES ('009_durable_vault_and_insights')`);
+    console.log("Migration 009_durable_vault_and_insights applied.");
+  }
+
   console.log("Migrations complete.");
 }
 

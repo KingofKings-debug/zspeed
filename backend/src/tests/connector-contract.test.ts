@@ -19,6 +19,7 @@ import { connectionRepository } from "../repositories/connection.repository.js";
 import { vehicleRepository } from "../repositories/vehicle.repository.js";
 import { getConnector, isConnectorAvailable } from "../connectors/index.js";
 import { redactSensitive, storeSecret, getSecret } from "../services/vault.service.js";
+import { drainWorker } from "../services/worker.service.js";
 
 const FLEET_ID = "fleet_test_connector";
 
@@ -136,27 +137,135 @@ describe("OEM Connector Contracts and Lifecycle", () => {
       { oem_vehicle_id: "VLT-001", vin: "1VXMA82635D100001", categories: ["location"] },
     ]);
 
-    const delivered = deliverBatch(conn.id);
-    expect(delivered).toBe(1);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((url: any) => {
+      if (String(url).includes("/oauth/token")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ access_token: "mock_token_123", expires_in: 3600 }),
+        } as any);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          contract: "voltera-simulation-v1",
+          vehicle_id: "VLT-001",
+          event_id: "evt_test_vlt_01",
+          sequence: 1,
+          source_timestamp: new Date().toISOString(),
+          payload: {
+            timestamp: new Date().toISOString(),
+            speed_mph: 35,
+            charge_fraction: 0.85,
+            odo_miles: 15200,
+            status: "running",
+            lat: 51.5074,
+            lon: -0.1278,
+          },
+        }),
+      } as any);
+    }) as any;
 
-    const rawEventsCount = queryOne<{ count: number }>(
-      "SELECT COUNT(*) as count FROM raw_events WHERE connection_id = ?",
-      [conn.id]
-    );
-    expect(rawEventsCount?.count).toBe(1);
+    try {
+      const delivered = await deliverBatch(conn.id);
+      expect(delivered).toBe(1);
+      drainWorker();
 
-    const normEventsCount = queryOne<{ count: number }>(
-      "SELECT COUNT(*) as count FROM normalized_events WHERE vehicle_id = ?",
-      ["veh_vlt_01"]
-    );
-    expect(normEventsCount?.count).toBe(1);
+      const rawEventsCount = queryOne<{ count: number }>(
+        "SELECT COUNT(*) as count FROM raw_events WHERE connection_id = ?",
+        [conn.id]
+      );
+      expect(rawEventsCount?.count).toBe(1);
 
-    const vehicle = vehicleRepository.findById("veh_vlt_01", FLEET_ID);
-    expect(vehicle?.data_status).toBe("RECEIVING");
-    expect(vehicle?.last_data_at).not.toBeNull();
+      const normEventsCount = queryOne<{ count: number }>(
+        "SELECT COUNT(*) as count FROM normalized_events WHERE vehicle_id = ?",
+        ["veh_vlt_01"]
+      );
+      expect(normEventsCount?.count).toBe(1);
 
-    const connection = connectionRepository.findById(conn.id, FLEET_ID);
-    expect(connection?.last_data_received).not.toBeNull();
+      const vehicle = vehicleRepository.findById("veh_vlt_01", FLEET_ID);
+      expect(vehicle?.data_status).toBe("RECEIVING");
+      expect(vehicle?.last_data_at).not.toBeNull();
+
+      const connection = connectionRepository.findById(conn.id, FLEET_ID);
+      expect(connection?.last_data_received).not.toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    await disconnectConnection(conn.id, FLEET_ID);
+  });
+
+  it("does not generate fabricated fallback telemetry when OEM request fails or is unavailable", async () => {
+    const conn = createConnection(FLEET_ID, "oem_voltera", "Outage Voltera");
+    await authorizeConnection(conn.id, FLEET_ID, {
+      username: "fleet_admin",
+      password: "valid_password",
+    });
+
+    await activateConnection(conn.id, FLEET_ID, [
+      { oem_vehicle_id: "VLT-001", vin: "1VXMA82635D100001", categories: ["location"] },
+    ]);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      return Promise.reject(new Error("Simulator outage / connection refused"));
+    }) as any;
+
+    try {
+      const delivered = await deliverBatch(conn.id);
+      expect(delivered).toBe(0);
+
+      const rawEventsCount = queryOne<{ count: number }>(
+        "SELECT COUNT(*) as count FROM raw_events WHERE connection_id = ?",
+        [conn.id]
+      );
+      expect(rawEventsCount?.count).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    await disconnectConnection(conn.id, FLEET_ID);
+  });
+
+  it("marks connection as EXPIRED when OEM responds with 401 unauthorized", async () => {
+    const conn = createConnection(FLEET_ID, "oem_voltera", "Expired Voltera");
+    await authorizeConnection(conn.id, FLEET_ID, {
+      username: "fleet_admin",
+      password: "valid_password",
+    });
+
+    await activateConnection(conn.id, FLEET_ID, [
+      { oem_vehicle_id: "VLT-001", vin: "1VXMA82635D100001", categories: ["location"] },
+    ]);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((url: any) => {
+      if (String(url).includes("/oauth/token")) {
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: () => Promise.resolve({ error: "invalid_client" }),
+        } as any);
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ error: "unauthorized" }),
+      } as any);
+    }) as any;
+
+    try {
+      const delivered = await deliverBatch(conn.id);
+      expect(delivered).toBe(0);
+
+      const connection = connectionRepository.findById(conn.id, FLEET_ID);
+      expect(connection?.status).toBe("EXPIRED");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
 
     await disconnectConnection(conn.id, FLEET_ID);
   });
@@ -228,5 +337,37 @@ describe("OEM Connector Contracts and Lifecycle", () => {
     expect(redacted.password).toBe("[REDACTED]");
     expect(redacted.api_key).toBe("[REDACTED]");
     expect(redacted.username).toBe("admin_user");
+  });
+
+  it("persists encrypted credentials across process restarts and uses connection-specific credentials", async () => {
+    const conn1 = createConnection(FLEET_ID, "oem_voltera", "Fleet 1 Voltera");
+    await authorizeConnection(conn1.id, FLEET_ID, {
+      username: "user_alpha",
+      password: "pass_alpha_secret",
+    });
+
+    const conn2 = createConnection(FLEET_ID, "oem_voltera", "Fleet 2 Voltera");
+    await authorizeConnection(conn2.id, FLEET_ID, {
+      username: "user_beta",
+      password: "pass_beta_secret",
+    });
+
+    closeDb();
+
+    const stored1 = connectionRepository.findById(conn1.id, FLEET_ID);
+    const stored2 = connectionRepository.findById(conn2.id, FLEET_ID);
+
+    expect(stored1?.credentials_vault_id).toBeDefined();
+    expect(stored2?.credentials_vault_id).toBeDefined();
+    expect(stored1?.credentials_vault_id).not.toBe(stored2?.credentials_vault_id);
+
+    const secret1 = getSecret(stored1!.credentials_vault_id!);
+    const secret2 = getSecret(stored2!.credentials_vault_id!);
+
+    expect(secret1?.username).toBe("user_alpha");
+    expect(secret1?.password).toBe("pass_alpha_secret");
+
+    expect(secret2?.username).toBe("user_beta");
+    expect(secret2?.password).toBe("pass_beta_secret");
   });
 });

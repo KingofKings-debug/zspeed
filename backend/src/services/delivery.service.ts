@@ -1,5 +1,6 @@
 import { ingestEvent } from "./ingestion.service.js";
 import { query, queryOne, run } from "../db/pool.js";
+import { getSecret } from "./vault.service.js";
 
 interface ActiveDelivery {
   connectionId: string;
@@ -10,6 +11,7 @@ interface ActiveDelivery {
   consecutiveFailures: number;
   token?: string;
   tokenExpiresAt?: number;
+  isPolling?: boolean;
 }
 
 const activeDeliveries = new Map<string, ActiveDelivery>();
@@ -36,17 +38,34 @@ async function getOrFetchVolteraToken(delivery: ActiveDelivery): Promise<string 
     return delivery.token;
   }
 
+  const connRow = queryOne<{ credentials_vault_id: string | null; account_identifier: string | null }>(
+    "SELECT credentials_vault_id, account_identifier FROM oem_connections WHERE id = ?",
+    [delivery.connectionId]
+  );
+  const creds = connRow?.credentials_vault_id ? getSecret(connRow.credentials_vault_id) : null;
+  const username = creds?.username || connRow?.account_identifier || "fleet_admin";
+  const password = creds?.password || "valid_password";
+
   const baseUrl = getOemBaseUrl(delivery.oemId);
   try {
     const res = await fetch(`${baseUrl}/oauth/token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        username: "fleet_admin",
-        password: "valid_password",
+        username,
+        password,
       }),
       signal: AbortSignal.timeout(2000),
     });
+
+    if (res.status === 401) {
+      run(
+        "UPDATE oem_connections SET status = 'EXPIRED', error_message = 'OEM account authorization expired', updated_at = datetime('now') WHERE id = ?",
+        [delivery.connectionId]
+      );
+      delivery.consecutiveFailures++;
+      return null;
+    }
 
     if (res.ok) {
       const data = (await res.json()) as any;
@@ -61,383 +80,386 @@ async function getOrFetchVolteraToken(delivery: ActiveDelivery): Promise<string 
   return null;
 }
 
-function generateDemoPayload(oemId: string, _vehicleId: string, index: number): any {
-  const now = new Date().toISOString();
-  if (oemId === "oem_voltera") {
-    return {
-      timestamp: now,
-      speed_mph: 25 + (index % 30),
-      charge_fraction: 0.8,
-      odo_miles: 12000 + index,
-      status: "running",
-      lat: 51.5074 + (index % 10) * 0.001,
-      lon: -0.1278 + (index % 10) * 0.001,
-      altitude: 20,
-      heading: 90,
-      harsh_brake: false,
-    };
-  }
-
-  if (oemId === "oem_crestline") {
-    return {
-      velocity_kmh: 40 + (index % 40),
-      battery_pct: 75,
-      distance_km: 15000 + index,
-      ignition: true,
-      gps_lat: 51.5074 + (index % 10) * 0.001,
-      gps_lon: -0.1278 + (index % 10) * 0.001,
-      gps_heading: 90,
-      harsh_braking: false,
-      charging: false,
-      time_measured: Date.now(),
-    };
-  }
-
-  return {
-    timestamp: now,
-    speed: 30,
-    lat: 51.5074,
-    lon: -0.1278,
-  };
-}
-
 export async function pollConnectionBatchAsync(connectionId: string): Promise<number> {
   const delivery = activeDeliveries.get(connectionId);
   if (!delivery) return 0;
+
+  if (delivery.isPolling) {
+    return 0;
+  }
 
   if (Date.now() < delivery.backoffUntil) {
     return 0;
   }
 
-  const mappings = query<{ oem_vehicle_id: string }>(
-    "SELECT oem_vehicle_id FROM vehicle_source_mappings WHERE connection_id = ? AND is_verified = 1",
-    [connectionId]
-  );
-  if (mappings.length === 0) return 0;
+  delivery.isPolling = true;
 
-  const baseUrl = getOemBaseUrl(delivery.oemId);
-  let delivered = 0;
-  let hitRateLimit = false;
-  let encounteredNetworkError = false;
+  try {
+    const mappings = query<{ oem_vehicle_id: string }>(
+      "SELECT oem_vehicle_id FROM vehicle_source_mappings WHERE connection_id = ? AND is_verified = 1",
+      [connectionId]
+    );
+    if (mappings.length === 0) return 0;
 
-  const batchSize = 3;
-  for (let i = 0; i < mappings.length; i += batchSize) {
-    const chunk = mappings.slice(i, i + batchSize);
+    const baseUrl = getOemBaseUrl(delivery.oemId);
+    let delivered = 0;
+    let hitRateLimit = false;
+    let encounteredNetworkError = false;
 
-    const chunkResults = await Promise.all(
-      chunk.map(async (mapping, chunkIndex) => {
-        const jitterMs = Math.floor(Math.random() * 30) + chunkIndex * 20;
-        await delay(jitterMs);
+    const batchSize = 3;
+    for (let i = 0; i < mappings.length; i += batchSize) {
+      const chunk = mappings.slice(i, i + batchSize);
 
-        const oemVehicleId = mapping.oem_vehicle_id;
+      const chunkResults = await Promise.all(
+        chunk.map(async (mapping, chunkIndex) => {
+          const jitterMs = Math.floor(Math.random() * 30) + chunkIndex * 20;
+          await delay(jitterMs);
 
-        const cursorRow = queryOne<{ cursor: string }>(
-          "SELECT cursor FROM connector_cursors WHERE connection_id = ? AND vehicle_id = ?",
-          [connectionId, oemVehicleId]
-        );
-        const currentCursor = cursorRow?.cursor || null;
+          const oemVehicleId = mapping.oem_vehicle_id;
 
-        try {
-          if (delivery.oemId === "oem_voltera") {
-            const token = await getOrFetchVolteraToken(delivery);
-            const headers: Record<string, string> = {};
-            if (token) headers["Authorization"] = `Bearer ${token}`;
+          const cursorRow = queryOne<{ cursor: string }>(
+            "SELECT cursor FROM connector_cursors WHERE connection_id = ? AND vehicle_id = ?",
+            [connectionId, oemVehicleId]
+          );
+          const currentCursor = cursorRow?.cursor || null;
 
-            let url = `${baseUrl}/v1/vehicles/${oemVehicleId}/telemetry/latest`;
-            if (currentCursor) {
-              url = `${baseUrl}/v1/vehicles/${oemVehicleId}/telemetry/history?cursor=${encodeURIComponent(currentCursor)}&limit=50`;
+          try {
+            if (delivery.oemId === "oem_voltera") {
+              const token = await getOrFetchVolteraToken(delivery);
+              const headers: Record<string, string> = {};
+              if (token) headers["Authorization"] = `Bearer ${token}`;
+
+              let url = `${baseUrl}/v1/vehicles/${oemVehicleId}/telemetry/latest`;
+              if (currentCursor) {
+                url = `${baseUrl}/v1/vehicles/${oemVehicleId}/telemetry/history?cursor=${encodeURIComponent(currentCursor)}&limit=50`;
+              }
+
+              const res = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
+
+              if (res.status === 401) {
+                run(
+                  "UPDATE oem_connections SET status = 'EXPIRED', error_message = 'OEM account authorization expired', updated_at = datetime('now') WHERE id = ?",
+                  [connectionId]
+                );
+                delivery.consecutiveFailures++;
+                return 0;
+              }
+
+              if (res.status === 429) {
+                hitRateLimit = true;
+                const retryAfter = parseInt(res.headers.get("Retry-After") || "5", 10);
+                delivery.backoffUntil = Date.now() + retryAfter * 1000;
+                return 0;
+              }
+
+              if (res.status >= 500) {
+                encounteredNetworkError = true;
+                return 0;
+              }
+
+              if (res.ok) {
+                const data = (await res.json()) as any;
+                let itemsDelivered = 0;
+
+                if (data.events && Array.isArray(data.events)) {
+                  if (data.events.length === 0 && currentCursor) {
+                    try {
+                      const latestRes = await fetch(`${baseUrl}/v1/vehicles/${oemVehicleId}/telemetry/latest`, {
+                        headers,
+                        signal: AbortSignal.timeout(3000),
+                      });
+                      if (latestRes.ok) {
+                        const latestData = (await latestRes.json()) as any;
+                        const parsedCur = parseInt(currentCursor, 10);
+                        if (latestData.sequence !== undefined && (isNaN(parsedCur) || latestData.sequence < parsedCur)) {
+                          if (latestData.payload) {
+                            const ingestRes = ingestEvent(
+                              delivery.fleetId,
+                              connectionId,
+                              oemVehicleId,
+                              latestData.payload,
+                              latestData.event_id || null,
+                              true
+                            );
+                            if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
+                              itemsDelivered++;
+                              run(
+                                `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
+                                 VALUES (?, ?, ?, datetime('now'))
+                                 ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
+                                [connectionId, oemVehicleId, String(latestData.sequence), String(latestData.sequence)]
+                              );
+                            }
+                          }
+                        }
+                      }
+                    } catch {}
+                  }
+
+                  for (const ev of data.events) {
+                    const ingestRes = ingestEvent(
+                      delivery.fleetId,
+                      connectionId,
+                      oemVehicleId,
+                      ev.payload,
+                      ev.event_id || null,
+                      true
+                    );
+                    if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
+                      itemsDelivered++;
+                    }
+                  }
+                  if (data.next_cursor && itemsDelivered > 0) {
+                    run(
+                      `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
+                       VALUES (?, ?, ?, datetime('now'))
+                       ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
+                      [connectionId, oemVehicleId, data.next_cursor, data.next_cursor]
+                    );
+                  }
+                } else if (data.payload) {
+                  const ingestRes = ingestEvent(
+                    delivery.fleetId,
+                    connectionId,
+                    oemVehicleId,
+                    data.payload,
+                    data.event_id || null,
+                    true
+                  );
+                  if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
+                    itemsDelivered++;
+                    if (data.sequence !== undefined) {
+                      run(
+                        `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
+                         VALUES (?, ?, ?, datetime('now'))
+                         ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
+                        [connectionId, oemVehicleId, String(data.sequence), String(data.sequence)]
+                      );
+                    }
+                  }
+                }
+                return itemsDelivered;
+              }
             }
 
-            const res = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
+            if (delivery.oemId === "oem_crestline") {
+              const connRow = queryOne<{ credentials_vault_id: string | null; account_identifier: string | null }>(
+                "SELECT credentials_vault_id, account_identifier FROM oem_connections WHERE id = ?",
+                [connectionId]
+              );
+              const creds = connRow?.credentials_vault_id ? getSecret(connRow.credentials_vault_id) : null;
+              const apiKey = creds?.api_key || creds?.apiKey || connRow?.account_identifier || "crestline_live_key";
+              const headers: Record<string, string> = { "X-API-Key": apiKey };
 
-            if (res.status === 429) {
-              hitRateLimit = true;
-              const retryAfter = parseInt(res.headers.get("Retry-After") || "5", 10);
-              delivery.backoffUntil = Date.now() + retryAfter * 1000;
-              return 0;
-            }
+              let url = `${baseUrl}/v1/vehicles/${oemVehicleId}/feed`;
+              if (currentCursor) {
+                url = `${baseUrl}/v1/vehicles/${oemVehicleId}/history?cursor=${encodeURIComponent(currentCursor)}&limit=50`;
+              }
 
-            if (res.ok) {
-              const data = (await res.json()) as any;
-              let itemsDelivered = 0;
+              const res = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
 
-              if (data.events && Array.isArray(data.events)) {
-                if (data.events.length === 0 && currentCursor) {
-                  try {
-                    const latestRes = await fetch(`${baseUrl}/v1/vehicles/${oemVehicleId}/telemetry/latest`, {
-                      headers,
-                      signal: AbortSignal.timeout(3000),
-                    });
-                    if (latestRes.ok) {
-                      const latestData = (await latestRes.json()) as any;
-                      const parsedCur = parseInt(currentCursor, 10);
-                      if (latestData.sequence !== undefined && (isNaN(parsedCur) || latestData.sequence < parsedCur)) {
-                        run(
-                          `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
-                           VALUES (?, ?, ?, datetime('now'))
-                           ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
-                          [connectionId, oemVehicleId, String(latestData.sequence), String(latestData.sequence)]
-                        );
-                        if (latestData.payload) {
+              if (res.status === 401) {
+                run(
+                  "UPDATE oem_connections SET status = 'EXPIRED', error_message = 'OEM account authorization expired', updated_at = datetime('now') WHERE id = ?",
+                  [connectionId]
+                );
+                delivery.consecutiveFailures++;
+                return 0;
+              }
+
+              if (res.status === 429) {
+                hitRateLimit = true;
+                const retryAfter = parseInt(res.headers.get("Retry-After") || "5", 10);
+                delivery.backoffUntil = Date.now() + retryAfter * 1000;
+                return 0;
+              }
+
+              if (res.status >= 500) {
+                encounteredNetworkError = true;
+                return 0;
+              }
+
+              if (res.ok) {
+                const data = (await res.json()) as any;
+                let itemsDelivered = 0;
+
+                if (data.data && Array.isArray(data.data)) {
+                  if (data.data.length === 0 && currentCursor) {
+                    try {
+                      const feedRes = await fetch(`${baseUrl}/v1/vehicles/${oemVehicleId}/feed`, {
+                        headers,
+                        signal: AbortSignal.timeout(3000),
+                      });
+                      if (feedRes.ok) {
+                        const feedData = (await feedRes.json()) as any;
+                        const parsedCur = parseInt(currentCursor, 10);
+                        const seq = feedData.sequence || feedData.pagination?.next_cursor;
+                        if (seq !== undefined && (isNaN(parsedCur) || Number(seq) < parsedCur)) {
                           const ingestRes = ingestEvent(
                             delivery.fleetId,
                             connectionId,
                             oemVehicleId,
-                            latestData.payload,
-                            latestData.event_id || null,
+                            feedData.payload || feedData,
+                            feedData.event_id || null,
                             true
                           );
                           if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
                             itemsDelivered++;
+                            run(
+                              `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
+                               VALUES (?, ?, ?, datetime('now'))
+                               ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
+                              [connectionId, oemVehicleId, String(seq), String(seq)]
+                            );
                           }
                         }
                       }
-                    }
-                  } catch {}
-                }
+                    } catch {}
+                  }
 
-                for (const ev of data.events) {
+                  for (const item of data.data) {
+                    const ingestRes = ingestEvent(
+                      delivery.fleetId,
+                      connectionId,
+                      oemVehicleId,
+                      item.payload || item,
+                      item.event_id || null,
+                      true
+                    );
+                    if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
+                      itemsDelivered++;
+                    }
+                  }
+                  if (data.pagination?.next_cursor && itemsDelivered > 0) {
+                    run(
+                      `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
+                       VALUES (?, ?, ?, datetime('now'))
+                       ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
+                      [connectionId, oemVehicleId, data.pagination.next_cursor, data.pagination.next_cursor]
+                    );
+                  }
+                } else {
                   const ingestRes = ingestEvent(
                     delivery.fleetId,
                     connectionId,
                     oemVehicleId,
-                    ev.payload,
-                    ev.event_id || null,
+                    data,
+                    data.event_id || null,
                     true
                   );
                   if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
                     itemsDelivered++;
+                    if (data.sequence !== undefined) {
+                      run(
+                        `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
+                         VALUES (?, ?, ?, datetime('now'))
+                         ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
+                        [connectionId, oemVehicleId, String(data.sequence), String(data.sequence)]
+                      );
+                    }
                   }
                 }
-                if (data.next_cursor) {
-                  run(
-                    `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
-                     VALUES (?, ?, ?, datetime('now'))
-                     ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
-                    [connectionId, oemVehicleId, data.next_cursor, data.next_cursor]
-                  );
-                }
-              } else if (data.payload) {
-                const ingestRes = ingestEvent(
-                  delivery.fleetId,
-                  connectionId,
-                  oemVehicleId,
-                  data.payload,
-                  data.event_id || null,
-                  true
-                );
-                if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
-                  itemsDelivered++;
-                }
-                if (data.sequence !== undefined) {
-                  run(
-                    `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
-                     VALUES (?, ?, ?, datetime('now'))
-                     ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
-                    [connectionId, oemVehicleId, String(data.sequence), String(data.sequence)]
-                  );
-                }
+                return itemsDelivered;
               }
-              return itemsDelivered;
-            }
-          }
-
-          if (delivery.oemId === "oem_crestline") {
-            const headers = { "X-API-Key": "crestline_live_key" };
-            let url = `${baseUrl}/v1/vehicles/${oemVehicleId}/feed`;
-            if (currentCursor) {
-              url = `${baseUrl}/v1/vehicles/${oemVehicleId}/history?cursor=${encodeURIComponent(currentCursor)}&limit=50`;
             }
 
-            const res = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
+            if (delivery.oemId === "oem_navarro") {
+              const connRow = queryOne<{ credentials_vault_id: string | null; account_identifier: string | null }>(
+                "SELECT credentials_vault_id, account_identifier FROM oem_connections WHERE id = ?",
+                [connectionId]
+              );
+              const creds = connRow?.credentials_vault_id ? getSecret(connRow.credentials_vault_id) : null;
+              const headers: Record<string, string> = {};
+              if (creds?.api_key || creds?.apiKey) {
+                headers["X-API-Key"] = creds.api_key || creds.apiKey;
+              }
 
-            if (res.status === 429) {
-              hitRateLimit = true;
-              const retryAfter = parseInt(res.headers.get("Retry-After") || "5", 10);
-              delivery.backoffUntil = Date.now() + retryAfter * 1000;
-              return 0;
-            }
+              const url = `${baseUrl}/v1/vehicles/${oemVehicleId}/telemetry`;
+              const res = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
 
-            if (res.ok) {
-              const data = (await res.json()) as any;
-              let itemsDelivered = 0;
+              if (res.status === 401) {
+                run(
+                  "UPDATE oem_connections SET status = 'EXPIRED', error_message = 'OEM account authorization expired', updated_at = datetime('now') WHERE id = ?",
+                  [connectionId]
+                );
+                delivery.consecutiveFailures++;
+                return 0;
+              }
 
-              if (data.data && Array.isArray(data.data)) {
-                if (data.data.length === 0 && currentCursor) {
-                  try {
-                    const feedRes = await fetch(`${baseUrl}/v1/vehicles/${oemVehicleId}/feed`, {
-                      headers,
-                      signal: AbortSignal.timeout(3000),
-                    });
-                    if (feedRes.ok) {
-                      const feedData = (await feedRes.json()) as any;
-                      const parsedCur = parseInt(currentCursor, 10);
-                      const seq = feedData.sequence || feedData.pagination?.next_cursor;
-                      if (seq !== undefined && (isNaN(parsedCur) || Number(seq) < parsedCur)) {
-                        run(
-                          `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
-                           VALUES (?, ?, ?, datetime('now'))
-                           ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
-                          [connectionId, oemVehicleId, String(seq), String(seq)]
-                        );
-                        const ingestRes = ingestEvent(
-                          delivery.fleetId,
-                          connectionId,
-                          oemVehicleId,
-                          feedData.payload || feedData,
-                          feedData.event_id || null,
-                          true
-                        );
-                        if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
-                          itemsDelivered++;
-                        }
-                      }
-                    }
-                  } catch {}
-                }
+              if (res.status === 429) {
+                hitRateLimit = true;
+                const retryAfter = parseInt(res.headers.get("Retry-After") || "5", 10);
+                delivery.backoffUntil = Date.now() + retryAfter * 1000;
+                return 0;
+              }
 
-                for (const item of data.data) {
+              if (res.status >= 500) {
+                encounteredNetworkError = true;
+                return 0;
+              }
+
+              if (res.ok) {
+                const data = (await res.json()) as any;
+                let itemsDelivered = 0;
+                if (data.payload) {
                   const ingestRes = ingestEvent(
                     delivery.fleetId,
                     connectionId,
                     oemVehicleId,
-                    item.payload || item,
-                    item.event_id || null,
+                    data.payload,
+                    data.event_id || null,
                     true
                   );
                   if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
                     itemsDelivered++;
+                    if (data.sequence !== undefined) {
+                      run(
+                        `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
+                         VALUES (?, ?, ?, datetime('now'))
+                         ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
+                        [connectionId, oemVehicleId, String(data.sequence), String(data.sequence)]
+                      );
+                    }
                   }
                 }
-                if (data.pagination?.next_cursor) {
-                  run(
-                    `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
-                     VALUES (?, ?, ?, datetime('now'))
-                     ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
-                    [connectionId, oemVehicleId, data.pagination.next_cursor, data.pagination.next_cursor]
-                  );
-                }
-              } else {
-                const ingestRes = ingestEvent(
-                  delivery.fleetId,
-                  connectionId,
-                  oemVehicleId,
-                  data,
-                  data.event_id || null,
-                  true
-                );
-                if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
-                  itemsDelivered++;
-                }
-                if (data.sequence !== undefined) {
-                  run(
-                    `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
-                     VALUES (?, ?, ?, datetime('now'))
-                     ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
-                    [connectionId, oemVehicleId, String(data.sequence), String(data.sequence)]
-                  );
-                }
+                return itemsDelivered;
               }
-              return itemsDelivered;
             }
+          } catch {
+            encounteredNetworkError = true;
           }
 
-          if (delivery.oemId === "oem_navarro") {
-            const url = `${baseUrl}/v1/vehicles/${oemVehicleId}/telemetry`;
-            const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-
-            if (res.status === 429) {
-              hitRateLimit = true;
-              const retryAfter = parseInt(res.headers.get("Retry-After") || "5", 10);
-              delivery.backoffUntil = Date.now() + retryAfter * 1000;
-              return 0;
-            }
-
-            if (res.ok) {
-              const data = (await res.json()) as any;
-              let itemsDelivered = 0;
-              if (data.payload) {
-                const ingestRes = ingestEvent(
-                  delivery.fleetId,
-                  connectionId,
-                  oemVehicleId,
-                  data.payload,
-                  data.event_id || null,
-                  true
-                );
-                if (ingestRes.status === "ACCEPTED" || ingestRes.status === "PROCESSED") {
-                  itemsDelivered++;
-                }
-                if (data.sequence !== undefined) {
-                  run(
-                    `INSERT INTO connector_cursors (connection_id, vehicle_id, cursor, last_polled_at)
-                     VALUES (?, ?, ?, datetime('now'))
-                     ON CONFLICT(connection_id, vehicle_id) DO UPDATE SET cursor = ?, last_polled_at = datetime('now')`,
-                    [connectionId, oemVehicleId, String(data.sequence), String(data.sequence)]
-                  );
-                }
-              }
-              return itemsDelivered;
-            }
-          }
-        } catch {
-          encounteredNetworkError = true;
-        }
-
-        const fallbackPayload = generateDemoPayload(delivery.oemId, oemVehicleId, i + 1);
-        try {
-          const res = ingestEvent(delivery.fleetId, connectionId, oemVehicleId, fallbackPayload);
-          return res.status === "PROCESSED" || res.status === "ACCEPTED" ? 1 : 0;
-        } catch {
           return 0;
-        }
-      })
-    );
+        })
+      );
 
-    for (const count of chunkResults) {
-      delivered += count;
+      for (const count of chunkResults) {
+        delivered += count;
+      }
+
+      if (hitRateLimit) {
+        break;
+      }
     }
 
-    if (hitRateLimit) {
-      break;
+    if (!encounteredNetworkError) {
+      delivery.consecutiveFailures = 0;
+    } else if (!hitRateLimit) {
+      delivery.consecutiveFailures++;
+      const maxBackoff = 30000;
+      const baseBackoff = Math.min(maxBackoff, Math.pow(2, Math.min(6, delivery.consecutiveFailures)) * 1000);
+      const jitter = Math.floor(Math.random() * 500);
+      delivery.backoffUntil = Date.now() + baseBackoff + jitter;
     }
+
+    return delivered;
+  } finally {
+    delivery.isPolling = false;
   }
-
-  if (!encounteredNetworkError) {
-    delivery.consecutiveFailures = 0;
-  } else if (!hitRateLimit) {
-    delivery.consecutiveFailures++;
-    if (delivery.consecutiveFailures > 3) {
-      const backoffSec = Math.min(30, Math.pow(2, delivery.consecutiveFailures - 3));
-      delivery.backoffUntil = Date.now() + backoffSec * 1000;
-    }
-  }
-
-  return delivered;
 }
 
-export function deliverBatch(connectionId: string): number {
-  const delivery = activeDeliveries.get(connectionId);
-  if (!delivery) return 0;
-
-  const mappings = query<{ oem_vehicle_id: string }>(
-    "SELECT oem_vehicle_id FROM vehicle_source_mappings WHERE connection_id = ? AND is_verified = 1",
-    [connectionId]
-  );
-
-  let delivered = 0;
-  for (let i = 0; i < mappings.length; i++) {
-    const oemVehicleId = mappings[i].oem_vehicle_id;
-    const payload = generateDemoPayload(delivery.oemId, oemVehicleId, i + 1);
-    try {
-      const res = ingestEvent(delivery.fleetId, connectionId, oemVehicleId, payload);
-      if (res.status === "PROCESSED" || res.status === "ACCEPTED") {
-        delivered++;
-      }
-    } catch {}
-  }
-
-  return delivered;
+export async function deliverBatch(connectionId: string): Promise<number> {
+  return pollConnectionBatchAsync(connectionId);
 }
 
 export function startDemoDelivery(

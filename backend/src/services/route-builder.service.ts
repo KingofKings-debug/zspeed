@@ -7,6 +7,8 @@ export interface RoutePoint {
   eventTime: string;
   isEventMarker: boolean;
   eventType?: string;
+  qualityFlags?: string[];
+  isSegmentStart?: boolean;
 }
 
 export interface SimplifiedRoute {
@@ -70,15 +72,36 @@ export function buildRoutePoints(
   eventMarkers: Set<string>
 ): RoutePoint[] {
   return points
+    .filter(
+      (p) =>
+        p.lat !== null &&
+        p.lat !== undefined &&
+        !isNaN(p.lat) &&
+        p.lon !== null &&
+        p.lon !== undefined &&
+        !isNaN(p.lon)
+    )
     .filter((p) => !p.qualityFlags.includes("IMPLAUSIBLE_GPS_JUMP"))
-    .map((p) => ({
-      lat: p.lat,
-      lon: p.lon,
-      eventId: p.eventId,
-      eventTime: p.eventTime.toISOString(),
-      isEventMarker: eventMarkers.has(p.eventId),
-      eventType: undefined,
-    }));
+    .map((p, idx, arr) => {
+      let isSegmentStart = idx === 0;
+      if (idx > 0) {
+        const prev = arr[idx - 1];
+        const dt = (p.eventTime.getTime() - prev.eventTime.getTime()) / 1000;
+        if (dt > 300) {
+          isSegmentStart = true;
+        }
+      }
+      return {
+        lat: p.lat,
+        lon: p.lon,
+        eventId: p.eventId,
+        eventTime: p.eventTime.toISOString(),
+        isEventMarker: eventMarkers.has(p.eventId),
+        eventType: undefined,
+        qualityFlags: p.qualityFlags || [],
+        isSegmentStart,
+      };
+    });
 }
 
 export function simplifyRoute(
@@ -89,7 +112,7 @@ export function simplifyRoute(
 
   const markerIndices = new Set<number>();
   for (let i = 0; i < points.length; i++) {
-    if (points[i].isEventMarker) {
+    if (points[i].isEventMarker || points[i].isSegmentStart) {
       markerIndices.add(i);
     }
   }
@@ -122,14 +145,20 @@ export function detectRouteGaps(
   routePoints: RoutePoint[]
 ): { gapBefore: string; gapAfter: string }[] {
   const gaps: { gapBefore: string; gapAfter: string }[] = [];
-  const implausible = allPoints.filter((p) => p.qualityFlags.includes("IMPLAUSIBLE_GPS_JUMP"));
 
-  for (const jump of implausible) {
-    const idx = allPoints.findIndex((p) => p.eventId === jump.eventId);
-    if (idx > 0) {
+  for (let i = 1; i < allPoints.length; i++) {
+    const prev = allPoints[i - 1];
+    const curr = allPoints[i];
+    const dt = (curr.eventTime.getTime() - prev.eventTime.getTime()) / 1000;
+    const isJump =
+      curr.qualityFlags.includes("IMPLAUSIBLE_GPS_JUMP") ||
+      prev.qualityFlags.includes("IMPLAUSIBLE_GPS_JUMP");
+    const isTimeGap = dt > 300;
+
+    if (isJump || isTimeGap) {
       gaps.push({
-        gapBefore: allPoints[idx - 1].eventId,
-        gapAfter: jump.eventId,
+        gapBefore: prev.eventId,
+        gapAfter: curr.eventId,
       });
     }
   }
@@ -145,13 +174,19 @@ export function buildGeoJsonRoute(
   }
 
   const gapAfterIds = new Set(gaps.map((g) => g.gapAfter));
+  const gapBeforeIds = new Set(gaps.map((g) => g.gapBefore));
 
   const segments: RoutePoint[][] = [];
   let current: RoutePoint[] = [];
 
   for (let i = 0; i < routePoints.length; i++) {
     const p = routePoints[i];
-    if (gapAfterIds.has(p.eventId) && current.length > 0) {
+    const isGapBreak =
+      (p.isSegmentStart && i > 0) ||
+      gapAfterIds.has(p.eventId) ||
+      (i > 0 && gapBeforeIds.has(routePoints[i - 1].eventId));
+
+    if (isGapBreak && current.length > 0) {
       segments.push(current);
       current = [p];
     } else {
@@ -177,20 +212,50 @@ export function buildGeoJsonRoute(
     });
   }
 
+  for (const p of routePoints) {
+    if (p.isEventMarker) {
+      features.push({
+        type: "Feature",
+        properties: {
+          type: "event_marker",
+          eventId: p.eventId,
+          eventTime: p.eventTime,
+          eventType: p.eventType,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [p.lon, p.lat],
+        },
+      });
+    }
+  }
+
   return { type: "FeatureCollection", features };
 }
 
 export function buildBoundingBox(points: RoutePoint[]): [number, number, number, number] | null {
   if (points.length === 0) return null;
-  let minLon = points[0].lon;
-  let maxLon = points[0].lon;
-  let minLat = points[0].lat;
-  let maxLat = points[0].lat;
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let validCount = 0;
+
   for (const p of points) {
-    if (p.lon < minLon) minLon = p.lon;
-    if (p.lon > maxLon) maxLon = p.lon;
-    if (p.lat < minLat) minLat = p.lat;
-    if (p.lat > maxLat) maxLat = p.lat;
+    if (
+      typeof p.lon === "number" &&
+      !isNaN(p.lon) &&
+      typeof p.lat === "number" &&
+      !isNaN(p.lat)
+    ) {
+      if (p.lon < minLon) minLon = p.lon;
+      if (p.lon > maxLon) maxLon = p.lon;
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      validCount++;
+    }
   }
+
+  if (validCount === 0) return null;
   return [minLon, minLat, maxLon, maxLat];
 }

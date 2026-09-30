@@ -143,14 +143,17 @@ export function processBatch(workerId: string = "worker-default"): number {
 }
 
 function handleBuildProjections(payload: any): void {
-  const { vehicleId, eventTime } = payload;
+  const { vehicleId, eventTime, toTime } = payload;
   if (!vehicleId) return;
 
   const fromTime = eventTime
-    ? new Date(new Date(eventTime).getTime() - 24 * 60 * 60 * 1000)
+    ? new Date(new Date(eventTime).getTime() - 30 * 60 * 1000)
     : undefined;
+  const to = toTime
+    ? new Date(new Date(toTime).getTime() + 30 * 60 * 1000)
+    : (eventTime ? new Date(new Date(eventTime).getTime() + 30 * 60 * 1000) : undefined);
 
-  buildProjectionsForVehicle(vehicleId, fromTime);
+  buildProjectionsForVehicle(vehicleId, fromTime, to);
 }
 
 function handleNormalizeRawEvent(payload: any): void {

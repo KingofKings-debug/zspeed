@@ -8,6 +8,7 @@ import { ingestEvent } from "../services/ingestion.service.js";
 import { drainWorker } from "../services/worker.service.js";
 import { getDb, closeDb } from "../db/pool.js";
 import { v4 as uuid } from "uuid";
+import { buildProjectionsForVehicle, getTripGeoJson } from "../services/projection.service.js";
 
 const FLEET_ID = "fleet_test_001";
 const CONN_A = "test_conn_a";
@@ -204,5 +205,123 @@ describe("Replay integration", () => {
     const tripCount2 = (queryOne("SELECT COUNT(*) as c FROM trips WHERE vehicle_id = ? AND projection_status = 'CURRENT'", [VEH_A1]) as any)?.c || 0;
 
     expect(tripCount2).toBe(tripCount1);
+  });
+
+  it("repeated rebuilds produce identical logical trip IDs, distances, event counts, and daily summaries", () => {
+    const t0 = new Date("2026-09-10T09:00:00Z");
+
+    for (let i = 0; i < 5; i++) {
+      const t = new Date(t0.getTime() + i * 60000);
+      const p = validVolteraV1Payload(51.5074 + i * 0.002, -0.1278, t.toISOString());
+      p.status = i < 4 ? "running" : "stopped";
+      ingestEvent(FLEET_ID, CONN_A, VEH_A1, p, `evt_stab_${i}`);
+    }
+    drainWorker();
+
+    const tripBefore = queryOne<any>(
+      "SELECT * FROM trips WHERE vehicle_id = ? AND projection_status = 'CURRENT' LIMIT 1",
+      [VEH_A1]
+    );
+    expect(tripBefore).toBeDefined();
+
+    const eventsCountBefore = (queryOne<any>(
+      "SELECT COUNT(*) as c FROM trip_events WHERE trip_id = ?",
+      [tripBefore.id]
+    ))?.c;
+
+    const summaryBefore = queryOne<any>(
+      "SELECT * FROM vehicle_daily_summary WHERE vehicle_id = ? AND date = '2026-09-10'",
+      [VEH_A1]
+    );
+
+    buildProjectionsForVehicle(VEH_A1);
+    buildProjectionsForVehicle(VEH_A1);
+
+    const tripAfter = queryOne<any>(
+      "SELECT * FROM trips WHERE vehicle_id = ? AND projection_status = 'CURRENT' LIMIT 1",
+      [VEH_A1]
+    );
+    expect(tripAfter.id).toBe(tripBefore.id);
+    expect(tripAfter.trip_number).toBe(tripBefore.trip_number);
+    expect(tripAfter.distance_km).toBeCloseTo(tripBefore.distance_km, 3);
+    expect(tripAfter.duration_seconds).toBe(tripBefore.duration_seconds);
+
+    const eventsCountAfter = (queryOne<any>(
+      "SELECT COUNT(*) as c FROM trip_events WHERE trip_id = ?",
+      [tripAfter.id]
+    ))?.c;
+    expect(eventsCountAfter).toBe(eventsCountBefore);
+
+    const summaryAfter = queryOne<any>(
+      "SELECT * FROM vehicle_daily_summary WHERE vehicle_id = ? AND date = '2026-09-10'",
+      [VEH_A1]
+    );
+    expect(summaryAfter.total_distance_km).toBeCloseTo(summaryBefore.total_distance_km, 3);
+    expect(summaryAfter.trip_count).toBe(summaryBefore.trip_count);
+  });
+
+  it("delayed events cannot overwrite newer vehicle signal timestamps in current state", () => {
+    const tNewer = new Date("2026-09-10T12:00:00Z");
+    const tOlder = new Date("2026-09-10T11:00:00Z");
+
+    const payloadNewer = validVolteraV1Payload(51.5074, -0.1278, tNewer.toISOString());
+    payloadNewer.speed_mph = 65;
+    ingestEvent(FLEET_ID, CONN_A, VEH_A1, payloadNewer, "evt_new_01");
+    drainWorker();
+
+    const stateBefore = queryOne<any>(
+      "SELECT signal_timestamps, latest_values FROM vehicle_current_state WHERE vehicle_id = ?",
+      [VEH_A1]
+    );
+    const tsBefore = JSON.parse(stateBefore.signal_timestamps);
+    const valsBefore = JSON.parse(stateBefore.latest_values);
+
+    const payloadOlder = validVolteraV1Payload(51.5000, -0.1200, tOlder.toISOString());
+    payloadOlder.speed_mph = 15;
+    ingestEvent(FLEET_ID, CONN_A, VEH_A1, payloadOlder, "evt_old_01");
+    drainWorker();
+
+    buildProjectionsForVehicle(VEH_A1);
+
+    const stateAfter = queryOne<any>(
+      "SELECT signal_timestamps, latest_values FROM vehicle_current_state WHERE vehicle_id = ?",
+      [VEH_A1]
+    );
+    const tsAfter = JSON.parse(stateAfter.signal_timestamps);
+    const valsAfter = JSON.parse(stateAfter.latest_values);
+
+    expect(tsAfter.vehicle_speed).toBe(tsBefore.vehicle_speed);
+    expect(valsAfter.vehicle_speed).toBe(valsBefore.vehicle_speed);
+  });
+
+  it("preserves route gaps across missing data and handles zero coordinates without error", () => {
+    const t0 = new Date("2026-09-10T14:00:00Z");
+
+    const p1 = validVolteraV1Payload(0.0, 0.0, t0.toISOString());
+    ingestEvent(FLEET_ID, CONN_A, VEH_A1, p1, "evt_zero_01");
+
+    const t1 = new Date(t0.getTime() + 60000);
+    const p2 = validVolteraV1Payload(0.01, 0.01, t1.toISOString());
+    ingestEvent(FLEET_ID, CONN_A, VEH_A1, p2, "evt_zero_02");
+
+    const t2 = new Date(t0.getTime() + 600000);
+    const p3 = validVolteraV1Payload(0.02, 0.02, t2.toISOString());
+    ingestEvent(FLEET_ID, CONN_A, VEH_A1, p3, "evt_zero_03");
+
+    const t3 = new Date(t0.getTime() + 660000);
+    const p4 = validVolteraV1Payload(0.03, 0.03, t3.toISOString());
+    ingestEvent(FLEET_ID, CONN_A, VEH_A1, p4, "evt_zero_04");
+
+    drainWorker();
+
+    const trips = query<any>(
+      "SELECT * FROM trips WHERE vehicle_id = ? ORDER BY started_at DESC",
+      [VEH_A1]
+    );
+    expect(trips.length).toBeGreaterThan(0);
+
+    const geoJson = getTripGeoJson(trips[0].id);
+    expect(geoJson).toBeDefined();
+    expect(geoJson.type).toBe("FeatureCollection");
   });
 });

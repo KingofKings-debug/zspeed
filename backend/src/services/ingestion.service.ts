@@ -611,6 +611,40 @@ function quarantineEvent(
 }
 
 function enqueueJob(jobType: string, payload: any): void {
+  if (jobType === "BUILD_PROJECTIONS" && payload?.vehicleId) {
+    const existing = queryOne<any>(
+      `SELECT id, payload FROM job_queue
+       WHERE job_type = 'BUILD_PROJECTIONS' AND status = 'PENDING'
+         AND json_extract(payload, '$.vehicleId') = ?`,
+      [payload.vehicleId]
+    );
+    if (existing) {
+      let existingPayload: any = {};
+      try {
+        existingPayload = JSON.parse(existing.payload);
+      } catch {}
+
+      const from1 = existingPayload.eventTime ? new Date(existingPayload.eventTime).getTime() : Infinity;
+      const from2 = payload.eventTime ? new Date(payload.eventTime).getTime() : Infinity;
+      const minFrom = Math.min(from1, from2);
+
+      const to1 = existingPayload.toTime
+        ? new Date(existingPayload.toTime).getTime()
+        : (existingPayload.eventTime ? new Date(existingPayload.eventTime).getTime() : 0);
+      const to2 = payload.eventTime ? new Date(payload.eventTime).getTime() : 0;
+      const maxTo = Math.max(to1, to2);
+
+      const merged = {
+        vehicleId: payload.vehicleId,
+        eventTime: minFrom !== Infinity ? new Date(minFrom).toISOString() : undefined,
+        toTime: maxTo !== 0 ? new Date(maxTo).toISOString() : undefined,
+      };
+
+      run("UPDATE job_queue SET payload = ? WHERE id = ?", [JSON.stringify(merged), existing.id]);
+      return;
+    }
+  }
+
   run(
     `INSERT INTO job_queue (id, job_type, payload, status, priority, attempts, max_attempts)
      VALUES (?, ?, ?, 'PENDING', 5, 0, 3)`,

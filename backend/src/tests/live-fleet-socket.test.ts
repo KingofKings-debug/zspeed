@@ -459,4 +459,76 @@ describe("Real-time Fleet Socket and Telemetry State Channel", () => {
     const leakedAlphaInB = bCatchupData.events.filter((e: any) => e.fleetId === FLEET_A);
     expect(leakedAlphaInB.length).toBe(0);
   });
+
+  it("paginates catch-up across more than 500 missed events", async () => {
+    for (let i = 1; i <= 550; i++) {
+      run(
+        `INSERT INTO fleet_socket_events (id, fleet_id, sequence, event_type, event_id, vehicle_id, source_event_time, server_received_time, payload, created_at)
+         VALUES (?, ?, ?, 'vehicle:telemetry', ?, ?, datetime('now'), datetime('now'), '{}', datetime('now'))`,
+        [uuid(), FLEET_A, i, `evt_bulk_${i}`, VEH_A]
+      );
+    }
+    run(
+      `INSERT INTO fleet_event_cursors (fleet_id, last_sequence) VALUES (?, 550)
+       ON CONFLICT(fleet_id) DO UPDATE SET last_sequence = 550`,
+      [FLEET_A]
+    );
+
+    const client: ClientSocket = Client(baseUrl, {
+      auth: { fleetId: FLEET_A },
+      transports: ["websocket", "polling"],
+    });
+
+    await new Promise<void>((resolve) => client.on("connect", () => resolve()));
+
+    const page1: any = await new Promise((resolve) => {
+      client.emit("catchup", { since: 0, limit: 500 }, (res: any) => resolve(res));
+    });
+
+    expect(page1.events.length).toBe(500);
+    expect(page1.events[0].sequence).toBe(1);
+    expect(page1.events[499].sequence).toBe(500);
+    expect(page1.latestSequence).toBe(550);
+
+    const lastSeq = page1.events[page1.events.length - 1].sequence;
+    const page2: any = await new Promise((resolve) => {
+      client.emit("catchup", { since: lastSeq, limit: 500 }, (res: any) => resolve(res));
+    });
+
+    expect(page2.events.length).toBe(50);
+    expect(page2.events[0].sequence).toBe(501);
+    expect(page2.events[49].sequence).toBe(550);
+
+    client.close();
+  });
+
+  it("signals stream reset when requested cursor is older than available history", async () => {
+    run(
+      `INSERT INTO fleet_socket_events (id, fleet_id, sequence, event_type, event_id, vehicle_id, source_event_time, server_received_time, payload, created_at)
+       VALUES (?, ?, 100, 'vehicle:telemetry', 'evt_100', ?, datetime('now'), datetime('now'), '{}', datetime('now'))`,
+      [uuid(), FLEET_A, VEH_A]
+    );
+
+    const client: ClientSocket = Client(baseUrl, {
+      auth: { fleetId: FLEET_A },
+      transports: ["websocket", "polling"],
+    });
+
+    await new Promise<void>((resolve) => client.on("connect", () => resolve()));
+
+    const resetResponse: any = await new Promise((resolve) => {
+      client.emit("catchup", { since: 10, limit: 500 }, (res: any) => resolve(res));
+    });
+
+    expect(resetResponse.reset).toBe(true);
+
+    const snapshotRes = await fetch(`${baseUrl}/api/vehicles`, {
+      headers: { "x-fleet-id": FLEET_A },
+    });
+    expect(snapshotRes.status).toBe(200);
+    const snapshotData = await snapshotRes.json();
+    expect(snapshotData.snapshotVersion).toBeDefined();
+
+    client.close();
+  });
 });

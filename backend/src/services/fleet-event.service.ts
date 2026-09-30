@@ -103,7 +103,20 @@ export function getCatchupEvents(
   fleetId: string,
   sinceSequence = 0,
   limit = 500
-): { events: FleetSocketMessage[]; latestSequence: number } {
+): { events: FleetSocketMessage[]; latestSequence: number; reset?: boolean } {
+  const minRow = queryOne<{ min_seq: number }>(
+    "SELECT MIN(sequence) as min_seq FROM fleet_socket_events WHERE fleet_id = ?",
+    [fleetId]
+  );
+  const minSeq = minRow?.min_seq || 0;
+  if (sinceSequence > 0 && minSeq > 0 && sinceSequence < minSeq - 1) {
+    return {
+      events: [],
+      latestSequence: minSeq,
+      reset: true,
+    };
+  }
+
   const rows = query<any>(
     `SELECT * FROM fleet_socket_events WHERE fleet_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?`,
     [fleetId, sinceSequence, limit]
@@ -127,5 +140,6 @@ export function getCatchupEvents(
   return {
     events,
     latestSequence: cursor?.last_sequence || 0,
+    reset: false,
   };
 }

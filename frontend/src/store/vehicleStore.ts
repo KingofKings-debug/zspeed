@@ -133,11 +133,16 @@ class VehicleStore {
     }
   }
 
-  public initializeFromSnapshot(vehiclesList: any[]): void {
-    this.initSnapshot(vehiclesList);
+  public reset(): void {
+    this.vehicles.clear();
+    this.notify();
   }
 
-  public initSnapshot(vehiclesList: any[]): void {
+  public initializeFromSnapshot(vehiclesList: any[], snapshotVersion?: number): void {
+    this.initSnapshot(vehiclesList, snapshotVersion);
+  }
+
+  public initSnapshot(vehiclesList: any[], snapshotVersion?: number): void {
     if (!Array.isArray(vehiclesList)) return;
 
     vehiclesList.forEach((v) => {
@@ -176,14 +181,19 @@ class VehicleStore {
           lastDataAt: v.last_data_at || null,
           lastReceiptTime: v.state_updated_at || v.last_data_at || null,
           lastUpdatedAge: this.formatAge(v.last_data_at || null),
-          sequence: 0,
+          sequence: snapshotVersion || 0,
           breadcrumbs,
           latestValues: vals,
           signalTimestamps: stamps,
         });
       } else {
         existing.vehicle = { ...existing.vehicle, ...v };
-        if (existing.sequence === 0) {
+
+        const isSnapshotStale =
+          (snapshotVersion !== undefined && existing.sequence > 0 && snapshotVersion < existing.sequence) ||
+          (existing.lastReceiptTime && v.last_data_at && new Date(existing.lastReceiptTime).getTime() > new Date(v.last_data_at).getTime());
+
+        if (!isSnapshotStale) {
           if (v.speed !== undefined && v.speed !== null) existing.speed = Number(v.speed);
           if (v.latitude !== undefined && v.latitude !== null) existing.latitude = Number(v.latitude);
           if (v.longitude !== undefined && v.longitude !== null) existing.longitude = Number(v.longitude);
@@ -196,6 +206,9 @@ class VehicleStore {
           }
           existing.latestValues = { ...vals, ...existing.latestValues };
           existing.signalTimestamps = { ...stamps, ...existing.signalTimestamps };
+          if (snapshotVersion !== undefined && snapshotVersion >= existing.sequence) {
+            existing.sequence = snapshotVersion;
+          }
         }
       }
     });

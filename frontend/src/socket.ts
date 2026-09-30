@@ -3,15 +3,25 @@ import type { FleetSocketMessage } from "./types";
 import { vehicleStore } from "./store/vehicleStore";
 
 let socket: Socket | null = null;
-let lastSequence = 0;
+let lastContiguousSequence = 0;
+let currentFleetId = "fleet_demo_001";
+let currentAuthToken: string | undefined;
 let currentTrackedVehicleId: string | null = null;
+let isCatchingUp = false;
+
 const listeners = new Set<(msg: FleetSocketMessage) => void>();
 const processedMessageIds = new Set<string>();
+const messageBuffer = new Map<number, FleetSocketMessage>();
 
 export function getFleetSocket(): Socket {
   if (!socket) {
+    const authData: Record<string, string> = { fleetId: currentFleetId };
+    if (currentAuthToken) {
+      authData.token = currentAuthToken;
+    }
+
     socket = io({
-      auth: { fleetId: "fleet_demo_001" },
+      auth: authData,
       autoConnect: true,
       reconnection: true,
       reconnectionDelay: 1000,
@@ -21,7 +31,7 @@ export function getFleetSocket(): Socket {
 
     socket.on("connect", () => {
       vehicleStore.setConnectionState("connected");
-      if (lastSequence > 0) {
+      if (lastContiguousSequence > 0) {
         syncCatchup();
       }
       if (currentTrackedVehicleId) {
@@ -45,27 +55,27 @@ export function getFleetSocket(): Socket {
   return socket;
 }
 
-function handleIncomingMessage(msg: FleetSocketMessage) {
-  if (!msg || typeof msg.sequence !== "number") return;
-
-  const dedupKey = msg.id || `${msg.eventType}:${msg.sequence}`;
-  if (processedMessageIds.has(dedupKey)) {
+export function setAuthenticatedFleet(fleetId: string, token?: string): void {
+  if (fleetId === currentFleetId && token === currentAuthToken) {
     return;
   }
-  processedMessageIds.add(dedupKey);
-  if (processedMessageIds.size > 500) {
-    const oldest = processedMessageIds.values().next().value;
-    if (oldest) processedMessageIds.delete(oldest);
+
+  currentFleetId = fleetId;
+  currentAuthToken = token;
+  lastContiguousSequence = 0;
+  messageBuffer.clear();
+  processedMessageIds.clear();
+  vehicleStore.reset();
+
+  if (socket) {
+    socket.disconnect();
+    socket = null;
   }
 
-  if (lastSequence > 0 && msg.sequence > lastSequence + 1) {
-    syncCatchup();
-  }
+  getFleetSocket();
+}
 
-  if (msg.sequence > lastSequence) {
-    lastSequence = msg.sequence;
-  }
-
+function applyMessage(msg: FleetSocketMessage): void {
   if (msg.eventType === "vehicle:telemetry") {
     vehicleStore.applyLiveUpdate(msg);
   }
@@ -79,16 +89,135 @@ function handleIncomingMessage(msg: FleetSocketMessage) {
   });
 }
 
-export function syncCatchup() {
-  if (!socket || !socket.connected) return;
-  const since = lastSequence;
-  socket.emit("catchup", { since }, (response?: { events: FleetSocketMessage[] }) => {
-    if (response?.events && Array.isArray(response.events)) {
-      response.events.forEach((msg) => {
-        handleIncomingMessage(msg);
+function drainContiguousBuffer(): void {
+  while (messageBuffer.has(lastContiguousSequence + 1)) {
+    const nextSeq = lastContiguousSequence + 1;
+    const nextMsg = messageBuffer.get(nextSeq)!;
+    messageBuffer.delete(nextSeq);
+    lastContiguousSequence = nextSeq;
+    applyMessage(nextMsg);
+  }
+}
+
+function handleIncomingMessage(msg: FleetSocketMessage) {
+  if (!msg || typeof msg.sequence !== "number") return;
+
+  const dedupKey = msg.id || `${msg.eventType}:${msg.sequence}`;
+  if (processedMessageIds.has(dedupKey)) {
+    return;
+  }
+  processedMessageIds.add(dedupKey);
+  if (processedMessageIds.size > 2000) {
+    const oldest = processedMessageIds.values().next().value;
+    if (oldest) processedMessageIds.delete(oldest);
+  }
+
+  if (lastContiguousSequence === 0) {
+    lastContiguousSequence = msg.sequence;
+    applyMessage(msg);
+    drainContiguousBuffer();
+    return;
+  }
+
+  if (msg.sequence <= lastContiguousSequence) {
+    return;
+  }
+
+  if (msg.sequence === lastContiguousSequence + 1) {
+    lastContiguousSequence = msg.sequence;
+    applyMessage(msg);
+    drainContiguousBuffer();
+    return;
+  }
+
+  messageBuffer.set(msg.sequence, msg);
+  syncCatchup();
+}
+
+export async function syncCatchup(): Promise<void> {
+  if (!socket || !socket.connected || isCatchingUp) return;
+  isCatchingUp = true;
+
+  try {
+    let hasMore = true;
+    let paginationSafety = 100;
+
+    while (hasMore && paginationSafety-- > 0) {
+      const since = lastContiguousSequence;
+      const res: any = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Catchup timeout")), 6000);
+        socket!.emit(
+          "catchup",
+          { since, limit: 500 },
+          (response?: { events?: FleetSocketMessage[]; reset?: boolean; latestSequence?: number }) => {
+            clearTimeout(timeout);
+            resolve(response);
+          }
+        );
       });
+
+      if (!res || res.reset) {
+        await fetchSnapshotFallback();
+        break;
+      }
+
+      const events: FleetSocketMessage[] = Array.isArray(res.events) ? res.events : [];
+      if (events.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      events.sort((a, b) => a.sequence - b.sequence);
+
+      for (const evt of events) {
+        const dedupKey = evt.id || `${evt.eventType}:${evt.sequence}`;
+        if (!processedMessageIds.has(dedupKey)) {
+          processedMessageIds.add(dedupKey);
+          if (evt.sequence === lastContiguousSequence + 1 || lastContiguousSequence === 0) {
+            lastContiguousSequence = evt.sequence;
+            applyMessage(evt);
+          } else if (evt.sequence > lastContiguousSequence + 1) {
+            messageBuffer.set(evt.sequence, evt);
+          }
+        }
+      }
+
+      drainContiguousBuffer();
+
+      if (events.length < 500) {
+        hasMore = false;
+      }
     }
-  });
+  } catch {
+    await fetchSnapshotFallback();
+  } finally {
+    isCatchingUp = false;
+  }
+}
+
+async function fetchSnapshotFallback(): Promise<void> {
+  try {
+    const headers: Record<string, string> = {};
+    if (currentAuthToken) {
+      headers["Authorization"] = `Bearer ${currentAuthToken}`;
+    } else {
+      headers["x-fleet-id"] = currentFleetId;
+    }
+
+    const res = await fetch("/api/vehicles", { headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.vehicles)) {
+        vehicleStore.initSnapshot(data.vehicles, data.snapshotVersion);
+        if (typeof data.snapshotVersion === "number" && data.snapshotVersion > lastContiguousSequence) {
+          lastContiguousSequence = data.snapshotVersion;
+        }
+        messageBuffer.clear();
+      }
+    }
+  } catch (err) {
+    console.error("Snapshot fallback error:", err);
+  }
 }
 
 export function subscribeToFleetEvents(listener: (msg: FleetSocketMessage) => void): () => void {
@@ -119,6 +248,8 @@ export function unsubscribeVehicleTracking(vehicleId: string) {
 export function getSocketState() {
   return {
     connected: socket?.connected ?? false,
-    lastSequence,
+    lastSequence: lastContiguousSequence,
+    isCatchingUp,
+    bufferedMessagesCount: messageBuffer.size,
   };
 }

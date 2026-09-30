@@ -21,7 +21,12 @@ router.get("/", async (req, res, next) => {
     const fleetId = getFleetId(req);
     const search = req.query.search as string | undefined;
     const vehicles = vehicleRepository.findByFleet(fleetId, search);
-    res.json({ vehicles });
+    const cursor = (getDb().prepare("SELECT last_sequence FROM fleet_event_cursors WHERE fleet_id = ?").get(fleetId) as any);
+    res.json({
+      vehicles,
+      snapshotVersion: cursor?.last_sequence || 0,
+      timestamp: new Date().toISOString(),
+    });
   } catch (err) {
     next(err);
   }

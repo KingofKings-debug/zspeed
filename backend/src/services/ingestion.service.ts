@@ -13,7 +13,7 @@ import {
   getNestedValue,
 } from "./format-contract.service.js";
 import { buildProjectionsForVehicle } from "./projection.service.js";
-import { recordAndPublishFleetEvent } from "./fleet-event.service.js";
+import { recordFleetEventDurable, publishFleetEventSocket, recordAndPublishFleetEvent, type FleetSocketMessage } from "./fleet-event.service.js";
 import {
   computeVehicleLiveState,
   computeMovementState,
@@ -366,180 +366,191 @@ export function processRawEvent(
     return { status: "QUARANTINED", eventId: rawEventId, message: msg };
   }
 
-  const normalizedEventId = uuid();
-  run(
-    `INSERT INTO normalization_attempts (id, raw_event_id, mapping_profile_id, replay_job_id, status)
-     VALUES (?, ?, ?, ?, 'SUCCESS')`,
-    [uuid(), rawEventId, profile.id, replayJobId || null]
-  );
+  const pendingNotifications: FleetSocketMessage[] = [];
 
-  run(
-    `INSERT INTO normalized_events
-       (id, raw_event_id, vehicle_id, mapping_profile_id, canonical_schema_version, canonical_values, quality_flags,
-        event_time, latitude, longitude, altitude)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(raw_event_id) DO UPDATE SET
-       canonical_values = excluded.canonical_values,
-       quality_flags = excluded.quality_flags,
-       event_time = excluded.event_time,
-       latitude = excluded.latitude,
-       longitude = excluded.longitude,
-       altitude = excluded.altitude`,
-    [normalizedEventId, rawEventId, vehicleId, profile.id, profile.canonical_schema_version || "1.0",
-     JSON.stringify(normalized), JSON.stringify(qualityFlags),
-     eventTime, latitude, longitude, altitude]
-  );
+  transaction(() => {
+    const normalizedEventId = uuid();
+    run(
+      `INSERT INTO normalization_attempts (id, raw_event_id, mapping_profile_id, replay_job_id, status)
+       VALUES (?, ?, ?, ?, 'SUCCESS')`,
+      [uuid(), rawEventId, profile.id, replayJobId || null]
+    );
 
-  run(
-    `UPDATE raw_events SET processing_status = 'PROCESSED' WHERE id = ?`,
-    [rawEventId]
-  );
+    run(
+      `INSERT INTO normalized_events
+         (id, raw_event_id, vehicle_id, mapping_profile_id, canonical_schema_version, canonical_values, quality_flags,
+          event_time, latitude, longitude, altitude)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(raw_event_id) DO UPDATE SET
+         mapping_profile_id = excluded.mapping_profile_id,
+         canonical_schema_version = excluded.canonical_schema_version,
+         canonical_values = excluded.canonical_values,
+         quality_flags = excluded.quality_flags,
+         event_time = excluded.event_time,
+         latitude = excluded.latitude,
+         longitude = excluded.longitude,
+         altitude = excluded.altitude`,
+      [
+        normalizedEventId,
+        rawEventId,
+        vehicleId,
+        profile.id,
+        profile.canonical_schema_version || "1.0",
+        JSON.stringify(normalized),
+        JSON.stringify(qualityFlags),
+        eventTime,
+        latitude,
+        longitude,
+        altitude,
+      ]
+    );
 
-  const currentStateRow = queryOne<any>(
-    "SELECT latest_values, signal_timestamps FROM vehicle_current_state WHERE vehicle_id = ?",
-    [vehicleId]
-  );
+    run(
+      `UPDATE raw_events SET processing_status = 'PROCESSED' WHERE id = ?`,
+      [rawEventId]
+    );
 
-  let isOutOfOrder = false;
-  const existingValues: Record<string, any> = currentStateRow?.latest_values ? safeJson(currentStateRow.latest_values, {}) : {};
-  const existingTimestamps: Record<string, string> = currentStateRow?.signal_timestamps ? safeJson(currentStateRow.signal_timestamps, {}) : {};
-  const mergedValues: Record<string, any> = { ...existingValues };
-  const signalTimestamps: Record<string, string> = { ...existingTimestamps };
+    const currentStateRow = queryOne<any>(
+      "SELECT latest_values, signal_timestamps FROM vehicle_current_state WHERE vehicle_id = ?",
+      [vehicleId]
+    );
 
-  const incomingTs = eventTime || new Date().toISOString();
-  const incomingTimeMs = eventTime ? new Date(eventTime).getTime() : Date.now();
+    let isOutOfOrder = false;
+    const existingValues: Record<string, any> = currentStateRow?.latest_values ? safeJson(currentStateRow.latest_values, {}) : {};
+    const existingTimestamps: Record<string, string> = currentStateRow?.signal_timestamps ? safeJson(currentStateRow.signal_timestamps, {}) : {};
+    const mergedValues: Record<string, any> = { ...existingValues };
+    const signalTimestamps: Record<string, string> = { ...existingTimestamps };
 
-  for (const [key, val] of Object.entries(normalized)) {
-    if (val === undefined || val === null) continue;
-    const existingSignalTime = existingTimestamps[key];
-    if (existingSignalTime && eventTime) {
-      const existingTimeMs = new Date(existingSignalTime).getTime();
-      if (incomingTimeMs < existingTimeMs) {
-        isOutOfOrder = true;
-        continue;
+    const incomingTs = eventTime || new Date().toISOString();
+    const incomingTimeMs = eventTime ? new Date(eventTime).getTime() : Date.now();
+
+    for (const [key, val] of Object.entries(normalized)) {
+      if (val === undefined || val === null) continue;
+      const existingSignalTime = existingTimestamps[key];
+      if (existingSignalTime && eventTime) {
+        const existingTimeMs = new Date(existingSignalTime).getTime();
+        if (incomingTimeMs < existingTimeMs) {
+          isOutOfOrder = true;
+          continue;
+        }
       }
+      mergedValues[key] = val;
+      signalTimestamps[key] = incomingTs;
     }
-    mergedValues[key] = val;
-    signalTimestamps[key] = incomingTs;
-  }
 
-  run(
-    `INSERT INTO vehicle_current_state (vehicle_id, latest_values, signal_timestamps, updated_at)
-     VALUES (?, ?, ?, datetime('now'))
-     ON CONFLICT(vehicle_id) DO UPDATE SET
-       latest_values = excluded.latest_values,
-       signal_timestamps = excluded.signal_timestamps,
-       updated_at = excluded.updated_at`,
-    [vehicleId, JSON.stringify(mergedValues), JSON.stringify(signalTimestamps)]
-  );
+    run(
+      `INSERT INTO vehicle_current_state (vehicle_id, latest_values, signal_timestamps, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(vehicle_id) DO UPDATE SET
+         latest_values = excluded.latest_values,
+         signal_timestamps = excluded.signal_timestamps,
+         updated_at = excluded.updated_at`,
+      [vehicleId, JSON.stringify(mergedValues), JSON.stringify(signalTimestamps)]
+    );
 
-  const currentSpeed = mergedValues.vehicle_speed !== undefined && mergedValues.vehicle_speed !== null
-    ? Number(mergedValues.vehicle_speed)
-    : null;
-  const currentLat = typeof mergedValues.latitude === "number" ? mergedValues.latitude : null;
-  const currentLon = typeof mergedValues.longitude === "number" ? mergedValues.longitude : null;
-  const currentAlt = typeof mergedValues.altitude === "number" ? mergedValues.altitude : null;
-  const currentIgnition = mergedValues.ignition_status ?? null;
-  const currentSoc = mergedValues.battery_soc !== undefined && mergedValues.battery_soc !== null
-    ? Number(mergedValues.battery_soc)
-    : null;
-  const currentOdometer = mergedValues.odometer !== undefined && mergedValues.odometer !== null
-    ? Number(mergedValues.odometer)
-    : null;
+    const currentSpeed = mergedValues.vehicle_speed !== undefined && mergedValues.vehicle_speed !== null
+      ? Number(mergedValues.vehicle_speed)
+      : null;
+    const currentLat = typeof mergedValues.latitude === "number" ? mergedValues.latitude : null;
+    const currentLon = typeof mergedValues.longitude === "number" ? mergedValues.longitude : null;
+    const currentAlt = typeof mergedValues.altitude === "number" ? mergedValues.altitude : null;
+    const currentIgnition = mergedValues.ignition_status ?? null;
+    const currentSoc = mergedValues.battery_soc !== undefined && mergedValues.battery_soc !== null
+      ? Number(mergedValues.battery_soc)
+      : null;
+    const currentOdometer = mergedValues.odometer !== undefined && mergedValues.odometer !== null
+      ? Number(mergedValues.odometer)
+      : null;
 
-  const liveState = computeVehicleLiveState({
-    hasActiveConnection: true,
-    lastReceiptTime: new Date(),
-    sourceEventTime: eventTime,
-    speed: currentSpeed,
-    ignition: currentIgnition,
-    charging: mergedValues.charging_state === "CHARGING" || mergedValues.charging === true,
-  });
-
-  const movementState = computeMovementState(
-    currentSpeed,
-    currentIgnition,
-    mergedValues.charging_state === "CHARGING" || mergedValues.charging === true
-  );
-
-  const dataFreshness = computeDataFreshness({
-    hasActiveConnection: true,
-    lastReceiptTime: new Date(),
-  });
-
-  run(
-    "UPDATE vehicles SET last_data_at = datetime('now'), data_status = 'RECEIVING', live_state = ?, last_telemetry_time = ? WHERE id = ?",
-    [liveState, eventTime || new Date().toISOString(), vehicleId]
-  );
-  run(
-    "UPDATE oem_connections SET last_data_received = datetime('now') WHERE id = ?",
-    [rawEvent.connection_id]
-  );
-
-  const vehRow = queryOne<any>("SELECT vin, label FROM vehicles WHERE id = ?", [vehicleId]);
-
-  recordAndPublishFleetEvent({
-    fleetId: rawEvent.fleet_id,
-    eventType: "vehicle:telemetry",
-    eventId: rawEventId,
-    vehicleId: vehicleId || undefined,
-    sourceEventTime: eventTime || undefined,
-    serverReceivedTime: new Date().toISOString(),
-    payload: {
-      vehicle_id: vehicleId,
-      vin: vehRow?.vin,
-      label: vehRow?.label,
-      latitude: currentLat,
-      longitude: currentLon,
-      altitude: currentAlt,
+    const liveState = computeVehicleLiveState({
+      hasActiveConnection: true,
+      lastReceiptTime: new Date(),
+      sourceEventTime: eventTime,
       speed: currentSpeed,
-      speed_unit: "km/h",
       ignition: currentIgnition,
-      battery_soc: currentSoc,
-      odometer: currentOdometer,
-      state: liveState,
-      movement_state: movementState,
-      data_freshness: dataFreshness,
-      is_out_of_order: isOutOfOrder,
-      latest_values: mergedValues,
-      signal_timestamps: signalTimestamps,
-      normalized,
-    },
-  });
+      charging: mergedValues.charging_state === "CHARGING" || mergedValues.charging === true,
+    });
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log(JSON.stringify({
-      diagnostic: "pipeline_stage",
-      vehicleId,
-      eventId: rawEventId,
-      sourceTimestamp: eventTime,
-      processingStage: "COMMITTED_CANONICAL_STATE",
-      speed: currentSpeed,
-    }));
-  }
+    const movementState = computeMovementState(
+      currentSpeed,
+      currentIgnition,
+      mergedValues.charging_state === "CHARGING" || mergedValues.charging === true
+    );
 
-  const connHealth = queryOne<{ oem_id: string; status: string; last_data_received?: string }>(
-    "SELECT oem_id, status, last_data_received FROM oem_connections WHERE id = ?",
-    [rawEvent.connection_id]
-  );
-  if (connHealth) {
-    recordAndPublishFleetEvent({
+    const dataFreshness = computeDataFreshness({
+      hasActiveConnection: true,
+      lastReceiptTime: new Date(),
+    });
+
+    run(
+      "UPDATE vehicles SET last_data_at = datetime('now'), data_status = 'RECEIVING', live_state = ?, last_telemetry_time = ? WHERE id = ?",
+      [liveState, eventTime || new Date().toISOString(), vehicleId]
+    );
+    run(
+      "UPDATE oem_connections SET last_data_received = datetime('now') WHERE id = ?",
+      [rawEvent.connection_id]
+    );
+
+    const vehRow = queryOne<any>("SELECT vin, label FROM vehicles WHERE id = ?", [vehicleId]);
+
+    const telemetryMsg = recordFleetEventDurable({
       fleetId: rawEvent.fleet_id,
-      eventType: "connection:health",
+      eventType: "vehicle:telemetry",
       eventId: rawEventId,
+      vehicleId: vehicleId || undefined,
       sourceEventTime: eventTime || undefined,
       serverReceivedTime: new Date().toISOString(),
       payload: {
-        connectionId: rawEvent.connection_id,
-        oemId: connHealth.oem_id,
-        status: connHealth.status,
-        lastDataReceived: connHealth.last_data_received,
+        vehicle_id: vehicleId,
+        vin: vehRow?.vin,
+        label: vehRow?.label,
+        latitude: currentLat,
+        longitude: currentLon,
+        altitude: currentAlt,
+        speed: currentSpeed,
+        speed_unit: "km/h",
+        ignition: currentIgnition,
+        battery_soc: currentSoc,
+        odometer: currentOdometer,
+        state: liveState,
+        movement_state: movementState,
+        data_freshness: dataFreshness,
+        is_out_of_order: isOutOfOrder,
+        latest_values: mergedValues,
+        signal_timestamps: signalTimestamps,
+        normalized,
       },
     });
-  }
+    pendingNotifications.push(telemetryMsg);
 
-  if (!replayJobId) {
-    enqueueJob("BUILD_PROJECTIONS", { vehicleId, eventTime });
+    const connHealth = queryOne<{ oem_id: string; status: string; last_data_received?: string }>(
+      "SELECT oem_id, status, last_data_received FROM oem_connections WHERE id = ?",
+      [rawEvent.connection_id]
+    );
+    if (connHealth) {
+      const connMsg = recordFleetEventDurable({
+        fleetId: rawEvent.fleet_id,
+        eventType: "connection:health",
+        eventId: rawEventId,
+        sourceEventTime: eventTime || undefined,
+        serverReceivedTime: new Date().toISOString(),
+        payload: {
+          connectionId: rawEvent.connection_id,
+          oemId: connHealth.oem_id,
+          status: connHealth.status,
+          lastDataReceived: connHealth.last_data_received,
+        },
+      });
+      pendingNotifications.push(connMsg);
+    }
+
+    if (!replayJobId) {
+      enqueueJob("BUILD_PROJECTIONS", { vehicleId, eventTime });
+    }
+  });
+
+  for (const notification of pendingNotifications) {
+    publishFleetEventSocket(notification);
   }
 
   return { status: "PROCESSED", eventId: rawEventId, message: "Successfully processed" };
@@ -847,13 +858,26 @@ export function runReplayJob(jobId: string, mappingProfileId: string): void {
             "SELECT vehicle_id FROM vehicle_source_mappings WHERE connection_id = ? AND oem_vehicle_id = ?",
             [evt.connection_id, evt.source_vehicle_id]
           );
+          let projectionFailed = false;
+          let projError = "";
           if (mappingRow?.vehicle_id) {
-            buildProjectionsForVehicle(mappingRow.vehicle_id);
+            const projRes = buildProjectionsForVehicle(mappingRow.vehicle_id);
+            if (projRes.errors && projRes.errors.length > 0) {
+              projectionFailed = true;
+              projError = projRes.errors.join("; ");
+            }
           }
-          if (quarantineRecord) {
-            resolveQuarantineRecord(quarantineRecord.id);
+          if (projectionFailed) {
+            error++;
+            if (quarantineRecord) {
+              markQuarantineRecordReplayFailed(quarantineRecord.id, `Projection failed: ${projError}`);
+            }
+          } else {
+            if (quarantineRecord) {
+              resolveQuarantineRecord(quarantineRecord.id);
+            }
+            processed++;
           }
-          processed++;
         } else {
           error++;
           if (quarantineRecord) {

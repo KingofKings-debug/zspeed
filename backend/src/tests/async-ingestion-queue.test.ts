@@ -443,4 +443,48 @@ describe("Asynchronous Ingestion and Durable Worker Queue", () => {
     expect(typeof health.failed).toBe("number");
     expect(Array.isArray(health.active_workers)).toBe(true);
   });
+
+  it("injected failures between processing stages recover cleanly without partial state or duplicates", () => {
+    const rawId = uuid();
+    const payload = validVolteraV1Payload(50);
+
+    run(
+      `INSERT INTO raw_events (id, fleet_id, connection_id, source_event_id, source_vehicle_id, payload_hash, payload, processing_status)
+       VALUES (?, ?, ?, 'evt_tx_failure_01', ?, 'hash', ?, 'PENDING')`,
+      [rawId, FLEET_ID, CONN_ID, OEM_VEH_ID, JSON.stringify(payload)]
+    );
+
+    run(
+      `CREATE TRIGGER fail_vehicle_current_state
+       BEFORE INSERT ON vehicle_current_state
+       BEGIN
+         SELECT RAISE(FAIL, 'Simulated failure during vehicle_current_state update');
+       END`
+    );
+
+    expect(() => processRawEvent(rawId)).toThrow();
+
+    const normCount = queryOne<{ c: number }>("SELECT COUNT(*) as c FROM normalized_events WHERE raw_event_id = ?", [rawId]);
+    expect(normCount?.c).toBe(0);
+
+    const socketCount = queryOne<{ c: number }>("SELECT COUNT(*) as c FROM fleet_socket_events WHERE event_id = ?", [rawId]);
+    expect(socketCount?.c).toBe(0);
+
+    const rawStatus = queryOne<{ processing_status: string }>("SELECT processing_status FROM raw_events WHERE id = ?", [rawId]);
+    expect(rawStatus?.processing_status).toBe("PENDING");
+
+    run("DROP TRIGGER fail_vehicle_current_state");
+
+    const retryRes = processRawEvent(rawId);
+    expect(retryRes.status).toBe("PROCESSED");
+
+    const normAfter = queryOne<{ c: number }>("SELECT COUNT(*) as c FROM normalized_events WHERE raw_event_id = ?", [rawId]);
+    expect(normAfter?.c).toBe(1);
+
+    const socketAfter = queryOne<{ c: number }>("SELECT COUNT(*) as c FROM fleet_socket_events WHERE event_id = ? AND event_type = 'vehicle:telemetry'", [rawId]);
+    expect(socketAfter?.c).toBe(1);
+
+    const rawStatusAfter = queryOne<{ processing_status: string }>("SELECT processing_status FROM raw_events WHERE id = ?", [rawId]);
+    expect(rawStatusAfter?.processing_status).toBe("PROCESSED");
+  });
 });

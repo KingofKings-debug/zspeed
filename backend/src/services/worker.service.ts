@@ -153,7 +153,10 @@ function handleBuildProjections(payload: any): void {
     ? new Date(new Date(toTime).getTime() + 30 * 60 * 1000)
     : (eventTime ? new Date(new Date(eventTime).getTime() + 30 * 60 * 1000) : undefined);
 
-  buildProjectionsForVehicle(vehicleId, fromTime, to);
+  const res = buildProjectionsForVehicle(vehicleId, fromTime, to);
+  if (res.errors && res.errors.length > 0) {
+    throw new Error(`Projection rebuild failed: ${res.errors.join("; ")}`);
+  }
 }
 
 function handleNormalizeRawEvent(payload: any): void {

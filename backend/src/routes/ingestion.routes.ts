@@ -22,23 +22,34 @@ router.post("/webhooks/:connectionId", (req, res, next) => {
       throw new AppError(404, "NOT_FOUND", "Connection not found");
     }
 
-    const sub = queryOne<{ secret: string }>(
-      "SELECT secret FROM connector_webhook_subscriptions WHERE connection_id = ?",
+    const sub = queryOne<{ secret: string; subscription_id: string }>(
+      "SELECT subscription_id, secret FROM connector_webhook_subscriptions WHERE connection_id = ?",
       [connectionId]
     );
+    if (!sub || !sub.secret) {
+      throw new AppError(401, "UNAUTHORIZED", "Active registered webhook subscription required");
+    }
 
-    const receivedSig = (req.headers["x-signature-sha256"] || req.headers["x-signature"]) as string;
-    if (sub?.secret) {
-      if (!receivedSig) {
-        throw new AppError(401, "UNAUTHORIZED", "Missing webhook signature");
-      }
-      const expectedSig = crypto
-        .createHmac("sha256", sub.secret)
-        .update(JSON.stringify(req.body))
-        .digest("hex");
-      if (receivedSig !== expectedSig) {
-        throw new AppError(401, "UNAUTHORIZED", "Invalid webhook signature");
-      }
+    const receivedSig = (req.headers["x-signature-sha256"] || req.headers["x-signature"] || req.headers["x-crestline-signature"]) as string;
+    if (!receivedSig) {
+      throw new AppError(401, "UNAUTHORIZED", "Missing webhook signature");
+    }
+
+    let cleanReceived = receivedSig.trim();
+    if (cleanReceived.startsWith("sha256=")) {
+      cleanReceived = cleanReceived.slice(7);
+    }
+
+    const rawBody: Buffer = (req as any).rawBody || Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body));
+    const expectedSig = crypto
+      .createHmac("sha256", sub.secret)
+      .update(rawBody)
+      .digest("hex");
+
+    const receivedBuf = Buffer.from(cleanReceived, "utf8");
+    const expectedBuf = Buffer.from(expectedSig, "utf8");
+    if (receivedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
+      throw new AppError(401, "UNAUTHORIZED", "Invalid webhook signature");
     }
 
     const payload = req.body;
@@ -50,6 +61,28 @@ router.post("/webhooks/:connectionId", (req, res, next) => {
 
     if (!sourceVehicleId) {
       throw new AppError(400, "VALIDATION_ERROR", "Could not determine vehicle identifier from webhook payload");
+    }
+
+    const otherMapping = queryOne<{ connection_id: string }>(
+      "SELECT connection_id FROM vehicle_source_mappings WHERE oem_vehicle_id = ? AND connection_id != ?",
+      [sourceVehicleId, connectionId]
+    );
+    if (otherMapping) {
+      throw new AppError(403, "FORBIDDEN", "Vehicle belongs to another connection");
+    }
+
+    const connMappings = queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM vehicle_source_mappings WHERE connection_id = ?",
+      [connectionId]
+    );
+    if (connMappings && connMappings.count > 0) {
+      const isMapped = queryOne<{ id: string }>(
+        "SELECT id FROM vehicle_source_mappings WHERE connection_id = ? AND oem_vehicle_id = ?",
+        [connectionId, sourceVehicleId]
+      );
+      if (!isMapped) {
+        throw new AppError(403, "FORBIDDEN", "Vehicle is not associated with this connection");
+      }
     }
 
     const sourceEventId =

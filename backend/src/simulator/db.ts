@@ -108,6 +108,26 @@ export function initSimulatorDb(database?: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS sim_webhook_deliveries (
+      id TEXT PRIMARY KEY,
+      subscription_id TEXT NOT NULL,
+      target_url TEXT NOT NULL,
+      secret TEXT NOT NULL,
+      oem_id TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      next_retry_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      delivered_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sim_wh_status ON sim_webhook_deliveries(status, next_retry_at);
+    CREATE INDEX IF NOT EXISTS idx_sim_wh_sub ON sim_webhook_deliveries(subscription_id);
+
     CREATE TABLE IF NOT EXISTS sim_scenarios (
       name TEXT PRIMARY KEY,
       enabled INTEGER NOT NULL DEFAULT 0,

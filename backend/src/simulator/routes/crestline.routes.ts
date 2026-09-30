@@ -216,6 +216,7 @@ router.delete("/v1/webhooks/subscriptions/:id", verifyCrestlineApiKey, (req: Req
   const { id } = req.params;
   const db = getSimulatorDb();
   db.prepare("DELETE FROM sim_subscriptions WHERE id = ?").run(id);
+  db.prepare("UPDATE sim_webhook_deliveries SET status = 'CANCELLED' WHERE subscription_id = ? AND status = 'PENDING'").run(id);
 
   res.json({
     contract: "crestline-simulation-v1",

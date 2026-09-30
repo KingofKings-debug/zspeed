@@ -90,4 +90,36 @@ router.get("/vehicles", (_req: Request, res: Response) => {
   res.json({ vehicles });
 });
 
+router.get("/webhooks/pending", (_req: Request, res: Response) => {
+  const db = getSimulatorDb();
+  const deliveries = db.prepare("SELECT * FROM sim_webhook_deliveries WHERE status = 'PENDING' ORDER BY created_at ASC").all();
+  res.json({ count: deliveries.length, deliveries });
+});
+
+router.get("/webhooks/exhausted", (_req: Request, res: Response) => {
+  const db = getSimulatorDb();
+  const deliveries = db.prepare("SELECT * FROM sim_webhook_deliveries WHERE status = 'EXHAUSTED' ORDER BY created_at DESC").all();
+  res.json({ count: deliveries.length, deliveries });
+});
+
+router.post("/webhooks/retry-exhausted", (_req: Request, res: Response) => {
+  const db = getSimulatorDb();
+  const result = db.prepare(`
+    UPDATE sim_webhook_deliveries
+    SET status = 'PENDING', attempts = 0, next_retry_at = datetime('now')
+    WHERE status = 'EXHAUSTED'
+  `).run();
+  res.json({ success: true, retried_count: result.changes });
+});
+
+router.get("/webhooks/status", (_req: Request, res: Response) => {
+  const db = getSimulatorDb();
+  const rows = db.prepare("SELECT status, count(*) as c FROM sim_webhook_deliveries GROUP BY status").all() as { status: string; c: number }[];
+  const counts: Record<string, number> = { PENDING: 0, DELIVERED: 0, EXHAUSTED: 0, CANCELLED: 0 };
+  for (const r of rows) {
+    counts[r.status] = r.c;
+  }
+  res.json(counts);
+});
+
 export default router;

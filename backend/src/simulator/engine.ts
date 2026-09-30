@@ -11,7 +11,7 @@ import {
   getRouteTotalDistance,
   interpolateAlongRoute,
 } from "./routes-fixtures.js";
-import { dispatchWebhook } from "./webhook-dispatcher.js";
+import { dispatchWebhook, enqueueWebhookDelivery, processPendingDeliveries } from "./webhook-dispatcher.js";
 
 export interface SimulatedVehicleState {
   id: string;
@@ -737,10 +737,11 @@ export class SimulationEngine {
 
       const matchingSubs = subscriptions.filter((s) => s.oem_id === v.oem_id);
       for (const sub of matchingSubs) {
-        dispatchWebhook(sub, payload).catch(() => {});
+        enqueueWebhookDelivery(sub, eventId, payload);
       }
     }
 
+    processPendingDeliveries().catch(() => {});
     cleanupOldSamples(200);
   }
 }

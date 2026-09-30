@@ -1,6 +1,7 @@
 import { query, queryOne, run, transaction } from "../db/pool.js";
 import { buildProjectionsForVehicle, runProjectionRebuildJob } from "./projection.service.js";
 import { processRawEvent, runReplayJob } from "./ingestion.service.js";
+import { recalculateFleetInsights } from "./insight.service.js";
 
 const WORKER_INTERVAL_MS = 1000;
 const MAX_JOBS_PER_CYCLE = 50;
@@ -157,6 +158,12 @@ function handleBuildProjections(payload: any): void {
   if (res.errors && res.errors.length > 0) {
     throw new Error(`Projection rebuild failed: ${res.errors.join("; ")}`);
   }
+  const v = queryOne<{ fleet_id: string }>("SELECT fleet_id FROM vehicles WHERE id = ?", [vehicleId]);
+  if (v?.fleet_id) {
+    try {
+      recalculateFleetInsights(v.fleet_id);
+    } catch {}
+  }
 }
 
 function handleNormalizeRawEvent(payload: any): void {
@@ -169,6 +176,12 @@ function handleRebuildProjectionJob(payload: any): void {
   const { jobId } = payload;
   if (!jobId) return;
   runProjectionRebuildJob(jobId);
+  const job = queryOne<{ fleet_id: string }>("SELECT fleet_id FROM projection_rebuild_jobs WHERE id = ?", [jobId]);
+  if (job?.fleet_id) {
+    try {
+      recalculateFleetInsights(job.fleet_id);
+    } catch {}
+  }
 }
 
 function handleReplayJob(payload: any): void {

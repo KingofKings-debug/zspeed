@@ -19,6 +19,7 @@ import {
   computeMovementState,
   computeDataFreshness,
 } from "./vehicle-state.service.js";
+import { recalculateFleetInsights } from "./insight.service.js";
 
 function safeJson(val: any, fallback: any): any {
   if (!val) return fallback;
@@ -922,6 +923,9 @@ export function runReplayJob(jobId: string, mappingProfileId: string): void {
        WHERE id = ?`,
       [finalOutcome, total, processed, error, jobId]
     );
+    try {
+      recalculateFleetInsights(job.fleet_id);
+    } catch {}
   } catch (err: any) {
     run(
       `UPDATE replay_jobs

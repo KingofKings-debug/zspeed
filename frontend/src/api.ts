@@ -22,6 +22,9 @@ export const api = {
 
   getInsights: () => request<{ safety_attention: number; service_needed: number; charging_needed: number; data_quality_issues: number }>("/vehicles/insights"),
 
+  getInsightDrilldown: (category: string) =>
+    request<{ category: string; count: number; vehicles: any[] }>(`/vehicles/insights/drilldown?category=${encodeURIComponent(category)}`),
+
   getVehicles: (search?: string) => {
     const q = search ? `?search=${encodeURIComponent(search)}` : "";
     return request<{ vehicles: any[] }>(`/vehicles${q}`);

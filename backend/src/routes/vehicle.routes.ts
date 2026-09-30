@@ -11,6 +11,10 @@ import {
   computeMovementState,
   computeDataFreshness,
 } from "../services/vehicle-state.service.js";
+import {
+  getFleetInsightsSummary,
+  getFleetInsightDrilldown,
+} from "../services/insight.service.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -45,43 +49,19 @@ router.get("/stats", async (req, res, next) => {
 router.get("/insights", async (req, res, next) => {
   try {
     const fleetId = getFleetId(req);
-    const db = getDb();
-    
-    const safetyRes = db.prepare(`
-      SELECT COUNT(DISTINCT te.vehicle_id) as c
-      FROM trip_events te
-      JOIN vehicles v ON te.vehicle_id = v.id
-      WHERE v.fleet_id = ? AND te.event_type IN ('HARSH_BRAKE', 'SPEED_VIOLATION') 
-      AND te.event_time > datetime('now', '-7 days')
-    `).get(fleetId) as any;
+    const summary = getFleetInsightsSummary(fleetId);
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    const serviceRes = db.prepare(`
-      SELECT COUNT(DISTINCT te.vehicle_id) as c
-      FROM trip_events te
-      JOIN vehicles v ON te.vehicle_id = v.id
-      WHERE v.fleet_id = ? AND te.event_type = 'FAULT'
-      AND te.event_time > datetime('now', '-7 days')
-    `).get(fleetId) as any;
-
-    const chargingRes = db.prepare(`
-      SELECT COUNT(*) as c
-      FROM vehicle_current_state
-      WHERE vehicle_id IN (SELECT id FROM vehicles WHERE fleet_id = ?)
-      AND json_extract(latest_values, '$.battery_soc') < 20
-    `).get(fleetId) as any;
-
-    const dataQualityRes = db.prepare(`
-      SELECT SUM(affected_vehicle_count) as c
-      FROM quarantine_incidents
-      WHERE fleet_id = ? AND status = 'UNRESOLVED'
-    `).get(fleetId) as any;
-
-    res.json({
-      safety_attention: safetyRes?.c || 0,
-      service_needed: serviceRes?.c || 0,
-      charging_needed: chargingRes?.c || 0,
-      data_quality_issues: dataQualityRes?.c || 0
-    });
+router.get("/insights/drilldown", async (req, res, next) => {
+  try {
+    const fleetId = getFleetId(req);
+    const category = (req.query.category as string) || "safety_attention";
+    const drilldown = getFleetInsightDrilldown(fleetId, category);
+    res.json(drilldown);
   } catch (err) {
     next(err);
   }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { api } from "../api";
 import type { SupportedOem } from "../types";
 import { useFleetOverview, vehicleStore } from "../store/vehicleStore";
+import { subscribeToFleetEvents } from "../socket";
 
 interface OverviewProps {
   onNavigate: (view: string) => void;
@@ -13,6 +14,7 @@ export default function Overview({ onNavigate, onImport }: OverviewProps) {
   const [oems, setOems] = useState<SupportedOem[]>([]);
   const [insights, setInsights] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [drilldown, setDrilldown] = useState<{ category: string; title: string; count: number; vehicles: any[] } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -34,7 +36,23 @@ export default function Overview({ onNavigate, onImport }: OverviewProps) {
       }
     }
     load();
+
+    const unsubscribe = subscribeToFleetEvents((msg) => {
+      if (msg.eventType === "fleet:insights") {
+        setInsights(msg.payload);
+      }
+    });
+    return () => unsubscribe();
   }, []);
+
+  async function openDrilldown(category: string, title: string) {
+    try {
+      const res = await api.getInsightDrilldown(category);
+      setDrilldown({ category, title, count: res.count, vehicles: res.vehicles || [] });
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   if (loading && storeStats.total === 0) {
     return (
@@ -96,26 +114,90 @@ export default function Overview({ onNavigate, onImport }: OverviewProps) {
           </div>
           <div className="card-body" style={{ padding: 0 }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 1, background: "var(--color-border-light)" }}>
-              <div style={{ background: "var(--color-bg-primary)", padding: 16 }}>
+              <div
+                style={{ background: "var(--color-bg-primary)", padding: 16, cursor: "pointer" }}
+                onClick={() => openDrilldown("service_needed", "Service Needed")}
+              >
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-error)", marginBottom: 4 }}>Service Needed</div>
                 <div style={{ fontSize: 24, fontWeight: 700 }}>{insights.service_needed}</div>
                 <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Active diagnostic faults</div>
               </div>
-              <div style={{ background: "var(--color-bg-primary)", padding: 16 }}>
+              <div
+                style={{ background: "var(--color-bg-primary)", padding: 16, cursor: "pointer" }}
+                onClick={() => openDrilldown("safety_attention", "Safety Attention")}
+              >
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-warning)", marginBottom: 4 }}>Safety Attention</div>
                 <div style={{ fontSize: 24, fontWeight: 700 }}>{insights.safety_attention}</div>
                 <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Recent harsh braking / speeding</div>
               </div>
-              <div style={{ background: "var(--color-bg-primary)", padding: 16 }}>
+              <div
+                style={{ background: "var(--color-bg-primary)", padding: 16, cursor: "pointer" }}
+                onClick={() => openDrilldown("charging_needed", "Charging Required")}
+              >
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-primary)", marginBottom: 4 }}>Charging Required</div>
                 <div style={{ fontSize: 24, fontWeight: 700 }}>{insights.charging_needed}</div>
                 <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Battery below 20%</div>
               </div>
-              <div style={{ background: "var(--color-bg-primary)", padding: 16, cursor: "pointer" }} onClick={() => onNavigate("issues")}>
+              <div
+                style={{ background: "var(--color-bg-primary)", padding: 16, cursor: "pointer" }}
+                onClick={() => openDrilldown("data_quality_issues", "Data Quality Issues")}
+              >
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-warning)", marginBottom: 4 }}>Data Quality</div>
                 <div style={{ fontSize: 24, fontWeight: 700 }}>{insights.data_quality_issues}</div>
-                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Vehicles with unresolved quarantine</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Vehicles with unresolved quarantine or stale data</div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {drilldown && (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div className="card" style={{ width: "90%", maxWidth: 650, maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
+            <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="card-header-title">{drilldown.title} ({drilldown.count} affected)</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setDrilldown(null)}>✕</button>
+            </div>
+            <div className="card-body" style={{ overflowY: "auto", flex: 1 }}>
+              {drilldown.vehicles.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 24, color: "var(--color-text-secondary)" }}>
+                  No vehicles currently affected.
+                </div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--color-border-light)", textAlign: "left" }}>
+                      <th style={{ padding: "8px 12px" }}>Vehicle</th>
+                      <th style={{ padding: "8px 12px" }}>VIN</th>
+                      <th style={{ padding: "8px 12px" }}>Detail / Status</th>
+                      <th style={{ padding: "8px 12px" }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drilldown.vehicles.map((v) => (
+                      <tr key={v.vehicle_id} style={{ borderBottom: "1px solid var(--color-border-light)" }}>
+                        <td style={{ padding: "8px 12px", fontWeight: 600 }}>{v.label}</td>
+                        <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{v.vin}</td>
+                        <td style={{ padding: "8px 12px" }}>{v.metric_value || v.status || "Attention required"}</td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setDrilldown(null);
+                              onNavigate(drilldown.category === "data_quality_issues" ? "issues" : "vehicles");
+                            }}
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div style={{ padding: 16, borderTop: "1px solid var(--color-border-light)", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-secondary" onClick={() => setDrilldown(null)}>Close</button>
             </div>
           </div>
         </div>
@@ -144,7 +226,7 @@ export default function Overview({ onNavigate, onImport }: OverviewProps) {
                     className="btn btn-primary btn-sm"
                     onClick={() => onNavigate("connections")}
                   >
-                    Set up connection
+                    Connect OEM
                   </button>
                 </div>
               </div>

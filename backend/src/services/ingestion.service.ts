@@ -924,7 +924,9 @@ export function runReplayJob(jobId: string, mappingProfileId: string): void {
       [finalOutcome, total, processed, error, jobId]
     );
     try {
-      recalculateFleetInsights(job.fleet_id);
+      if (targetFleetId) {
+        recalculateFleetInsights(targetFleetId);
+      }
     } catch {}
   } catch (err: any) {
     run(

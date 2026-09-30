@@ -41,7 +41,7 @@ export function buildProjectionsForVehicle(
         );
         if (boundaryTrip && boundaryTrip.started_at) {
           const tripStart = new Date(boundaryTrip.started_at);
-          if (tripStart < expandedFrom) {
+          if (!expandedFrom || tripStart < expandedFrom) {
             expandedFrom = tripStart;
           }
         }

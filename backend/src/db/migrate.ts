@@ -617,6 +617,17 @@ export function runMigrations(): void {
     console.log("Migration 009_durable_vault_and_insights applied.");
   }
 
+  const insightIndexesExisting = queryOne<{ name: string }>(
+    "SELECT name FROM _migrations WHERE name = ?",
+    ["010_insight_lookup_indexes"]
+  );
+  if (!insightIndexesExisting) {
+    execRaw("CREATE INDEX IF NOT EXISTS idx_quarantine_records_vehicle_status ON quarantine_records(vehicle_id, status)");
+    execRaw("CREATE INDEX IF NOT EXISTS idx_quarantine_incidents_fleet_status ON quarantine_incidents(fleet_id, status)");
+    execRaw("INSERT INTO _migrations (name) VALUES ('010_insight_lookup_indexes')");
+    console.log("Migration 010_insight_lookup_indexes applied.");
+  }
+
   console.log("Migrations complete.");
 }
 

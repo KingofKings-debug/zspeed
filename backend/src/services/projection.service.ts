@@ -669,5 +669,14 @@ export function getVehicleCurrentDetail(vehicleId: string): any {
       : null,
     latestTrip,
     unresolvedQuarantineCount: quarantineCount?.count || 0,
+    dataQuality: {
+      validEvents: queryOne<{ count: number }>(
+        "SELECT COUNT(DISTINCT raw_event_id) AS count FROM normalized_events WHERE vehicle_id = ?", [vehicleId]
+      )?.count || 0,
+      quarantinedEvents: queryOne<{ count: number }>(
+        "SELECT COUNT(DISTINCT raw_event_id) AS count FROM quarantine_records WHERE vehicle_id = ?", [vehicleId]
+      )?.count || 0,
+      unresolvedEvents: quarantineCount?.count || 0,
+    },
   };
 }

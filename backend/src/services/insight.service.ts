@@ -107,14 +107,13 @@ export function recalculateFleetInsights(fleetId: string): {
   }
 
   const qualityRows = query<any>(`
-    SELECT DISTINCT v.id as vehicle_id, v.vin, v.label, v.data_status,
+    SELECT v.id as vehicle_id, v.vin, v.label, v.data_status,
            (SELECT qr.failure_detail FROM quarantine_records qr WHERE qr.vehicle_id = v.id AND qr.status = 'UNRESOLVED' LIMIT 1) as q_reason,
            (SELECT qi.title FROM quarantine_incidents qi WHERE qi.fleet_id = v.fleet_id AND qi.status = 'UNRESOLVED' LIMIT 1) as qi_reason
     FROM vehicles v
-    LEFT JOIN quarantine_records qr ON v.id = qr.vehicle_id AND qr.status = 'UNRESOLVED'
     WHERE v.fleet_id = ?
       AND (
-        (qr.id IS NOT NULL)
+        EXISTS (SELECT 1 FROM quarantine_records qr WHERE qr.vehicle_id = v.id AND qr.status = 'UNRESOLVED')
         OR
         (v.data_status IN ('STALE', 'OFFLINE', 'ERROR'))
       )

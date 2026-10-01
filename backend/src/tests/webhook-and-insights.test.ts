@@ -19,6 +19,7 @@ import { app as platformApp } from "../index.js";
 import { createConnection, activateConnection, disconnectConnection } from "../services/connection.service.js";
 import { ingestEvent, replayEvents } from "../services/ingestion.service.js";
 import { drainWorker } from "../services/worker.service.js";
+import { getVehicleCurrentDetail } from "../services/projection.service.js";
 import {
   enqueueWebhookDelivery,
   processPendingDeliveries,
@@ -352,6 +353,30 @@ describe("Webhook Authentication, Delivery Guarantees, and Isolation", () => {
 });
 
 describe("Durable Fleet Insights Projections and Consistency", () => {
+  it("counts each affected vehicle once with a large quarantine backlog", () => {
+    const db = getDb();
+    const connection = createConnection(FLEET_A, "oem_voltera", "Backlog regression");
+    db.prepare(`INSERT INTO raw_events
+      (id, fleet_id, connection_id, source_vehicle_id, payload_hash, payload, processing_status)
+      VALUES ('raw_backlog', ?, ?, 'VLT-001', 'backlog_hash', '{}', 'QUARANTINED')`)
+      .run(FLEET_A, connection.id);
+    const insert = db.prepare(`INSERT INTO quarantine_records
+      (id, raw_event_id, fleet_id, connection_id, oem_id, vehicle_id, failure_category,
+       failure_detail, first_failure_at, latest_attempt_at, status)
+      VALUES (?, 'raw_backlog', ?, ?, 'oem_voltera', 'veh_a_1', 'SCHEMA_CHANGE',
+        'Backlog format failure', datetime('now'), datetime('now'), 'UNRESOLVED')`);
+    db.transaction(() => {
+      for (let i = 0; i < 12000; i++) insert.run(`quarantine_backlog_${i}`, FLEET_A, connection.id);
+    })();
+    db.prepare("UPDATE vehicles SET data_status = 'STALE' WHERE id = 'veh_a_2'").run();
+    expect(recalculateFleetInsights(FLEET_A).data_quality_issues).toBe(2);
+    const drilldown = getFleetInsightDrilldown(FLEET_A, "data_quality_issues");
+    expect(drilldown.vehicles.map(vehicle => vehicle.vehicle_id).sort()).toEqual(["veh_a_1", "veh_a_2"]);
+    expect(recalculateFleetInsights(FLEET_B).data_quality_issues).toBe(0);
+    expect(getVehicleCurrentDetail("veh_a_1").dataQuality).toEqual({ validEvents: 0, quarantinedEvents: 1, unresolvedEvents: 12000 });
+    expect(getVehicleCurrentDetail("veh_b_1").dataQuality).toEqual({ validEvents: 0, quarantinedEvents: 0, unresolvedEvents: 0 });
+  });
+
   it("maintains consistent distinct vehicle counts across rebuilds, fault clearing, and replay", async () => {
     const db = getDb();
 

@@ -2,9 +2,12 @@ import { useEffect, useRef, useMemo } from "react";
 import Map, { Source, Layer, Marker, MapRef } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import * as maplibregl from "maplibre-gl";
+import mapWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { TripEvent } from "../types";
+import { isMapCoordinate, routeMapData } from "../map-data";
 
 const MAP_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+maplibregl.setWorkerUrl(mapWorkerUrl);
 
 const EVENT_COLORS: Record<string, string> = {
   TRIP_START: "#2a9d8f",
@@ -57,20 +60,17 @@ export default function MapView({
 }: Props) {
   const mapRef = useRef<MapRef>(null);
   const hasCenteredLiveRef = useRef(false);
+  const routeData = useMemo(() => routeMapData(routeGeoJson), [routeGeoJson]);
+  const validLivePosition = livePosition && isMapCoordinate([livePosition.longitude, livePosition.latitude]) ? livePosition : null;
+  const validBreadcrumbs = (liveBreadcrumbs || []).filter(isMapCoordinate);
 
   const bounds = useMemo(() => {
-    if (!routeGeoJson || !routeGeoJson.features || routeGeoJson.features.length === 0) return null;
-    const allCoords: [number, number][] = [];
-    routeGeoJson.features.forEach((f: any) => {
-      if (f.geometry?.coordinates) {
-        f.geometry.coordinates.forEach((c: [number, number]) => allCoords.push(c));
-      }
-    });
+    const allCoords = routeData.coordinates;
     if (allCoords.length === 0) return null;
     
     const initialBounds = new maplibregl.LngLatBounds(allCoords[0], allCoords[0]);
     return allCoords.reduce((b, c) => b.extend(c), initialBounds);
-  }, [routeGeoJson]);
+  }, [routeData]);
 
   useEffect(() => {
     if (bounds && mapRef.current) {
@@ -81,24 +81,24 @@ export default function MapView({
   useEffect(() => {
     if (selectedEventId && mapRef.current) {
       const evt = tripEvents.find((e) => e.id === selectedEventId);
-      if (evt?.latitude && evt?.longitude) {
-        mapRef.current.flyTo({ center: [evt.longitude, evt.latitude], zoom: 15, duration: 800 });
+      if (evt && isMapCoordinate([evt.longitude, evt.latitude])) {
+        mapRef.current.flyTo({ center: [evt.longitude!, evt.latitude!], zoom: 15, duration: 800 });
       }
     }
   }, [selectedEventId, tripEvents]);
 
   useEffect(() => {
-    if (!bounds && livePosition && mapRef.current) {
+    if (!bounds && validLivePosition && mapRef.current) {
       if (!hasCenteredLiveRef.current) {
         hasCenteredLiveRef.current = true;
         mapRef.current.flyTo({
-          center: [livePosition.longitude, livePosition.latitude],
+          center: [validLivePosition.longitude, validLivePosition.latitude],
           zoom: 14,
           duration: 800,
         });
       } else {
         mapRef.current.easeTo({
-          center: [livePosition.longitude, livePosition.latitude],
+          center: [validLivePosition.longitude, validLivePosition.latitude],
           duration: 400,
         });
       }
@@ -116,12 +116,15 @@ export default function MapView({
   }
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: 400 }}>
+    <div style={{ position: "relative", width: "100%", height: "clamp(450px, 65vh, 650px)" }}>
       <Map
         ref={mapRef}
+        onLoad={() => {
+          if (bounds) mapRef.current?.fitBounds(bounds.toArray() as [[number, number], [number, number]], { padding: 60, maxZoom: 15, duration: 0 });
+        }}
         initialViewState={{
-          longitude: livePosition?.longitude ?? -0.1278,
-          latitude: livePosition?.latitude ?? 51.5074,
+          longitude: bounds?.getCenter().lng ?? validLivePosition?.longitude ?? -0.1278,
+          latitude: bounds?.getCenter().lat ?? validLivePosition?.latitude ?? 51.5074,
           zoom: 13
         }}
         mapStyle={{
@@ -137,8 +140,8 @@ export default function MapView({
           layers: [{ id: "osm", type: "raster", source: "osm" }],
         }}
       >
-        {routeGeoJson && (
-          <Source id="route" type="geojson" data={routeGeoJson}>
+        {routeData.geoJson.features.length > 0 && (
+          <Source id="route" type="geojson" data={routeData.geoJson}>
             <Layer
               id="route-line"
               type="line"
@@ -153,7 +156,7 @@ export default function MapView({
         )}
 
         {tripEvents.map(evt => {
-          if (!evt.latitude || !evt.longitude) return null;
+          if (!isMapCoordinate([evt.longitude, evt.latitude])) return null;
           const color = EVENT_COLORS[evt.event_type] || "#4a6fa5";
           const icon = EVENT_ICONS[evt.event_type] || "•";
           const isSelected = selectedEventId === evt.id;
@@ -161,8 +164,8 @@ export default function MapView({
           return (
             <Marker
               key={evt.id}
-              longitude={evt.longitude}
-              latitude={evt.latitude}
+              longitude={evt.longitude!}
+              latitude={evt.latitude!}
               anchor="center"
               onClick={e => {
                 e.originalEvent.stopPropagation();
@@ -195,7 +198,7 @@ export default function MapView({
           );
         })}
 
-        {liveBreadcrumbs && liveBreadcrumbs.length > 1 && (
+        {validBreadcrumbs.length > 1 && (
           <Source
             id="live-breadcrumbs"
             type="geojson"
@@ -203,7 +206,7 @@ export default function MapView({
               type: "Feature",
               geometry: {
                 type: "LineString",
-                coordinates: liveBreadcrumbs,
+                coordinates: validBreadcrumbs,
               },
               properties: {},
             }}
@@ -221,21 +224,21 @@ export default function MapView({
           </Source>
         )}
 
-        {livePosition && (
+        {validLivePosition && (
           <Marker
-            longitude={livePosition.longitude}
-            latitude={livePosition.latitude}
+            longitude={validLivePosition.longitude}
+            latitude={validLivePosition.latitude}
             anchor="center"
             style={{ zIndex: 25 }}
           >
             <div
-              className={`live-vehicle-marker state-${(livePosition.state || "MOVING").toLowerCase()}`}
-              title={`Live: ${livePosition.state || "Active"}${livePosition.speed !== null && livePosition.speed !== undefined ? ` (${livePosition.speed} km/h)` : ""}`}
+              className={`live-vehicle-marker state-${(validLivePosition.state || "MOVING").toLowerCase()}`}
+              title={`Live: ${validLivePosition.state || "Active"}${validLivePosition.speed !== null && validLivePosition.speed !== undefined ? ` (${validLivePosition.speed} km/h)` : ""}`}
               style={{
                 width: 32,
                 height: 32,
                 borderRadius: "50%",
-                background: livePosition.state === "IDLE" ? "#d4a053" : livePosition.state === "STALE" ? "#888888" : "#2a9d8f",
+                background: validLivePosition.state === "IDLE" ? "#d4a053" : validLivePosition.state === "STALE" ? "#888888" : "#2a9d8f",
                 color: "white",
                 display: "flex",
                 alignItems: "center",

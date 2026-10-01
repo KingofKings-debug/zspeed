@@ -256,6 +256,7 @@ export interface VehicleDetail {
   currentState: VehicleSignalState | null;
   latestTrip: Trip | null;
   unresolvedQuarantineCount: number;
+  dataQuality?: { validEvents: number; quarantinedEvents: number; unresolvedEvents: number };
 }
 
 export interface TripQuality {

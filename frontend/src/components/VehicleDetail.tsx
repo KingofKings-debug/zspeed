@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../api";
 import type { VehicleDetail, Trip, TripEvent, TripQuality, VehicleLiveState } from "../types";
 import MapView, { type LivePosition } from "./MapView";
 import { subscribeToFleetEvents, subscribeVehicleTracking, unsubscribeVehicleTracking } from "../socket";
 import { useVehicleEntry, vehicleStore } from "../store/vehicleStore";
+import ErrorBoundary from "./ErrorBoundary";
+import { isMapCoordinate } from "../map-data";
 
 function renderLiveBadge(movementState: string | null, freshness?: string | null) {
   if (freshness === "STALE") {
@@ -170,6 +172,10 @@ function EventTimelineItem({
   onClick: () => void;
 }) {
   const color = EVENT_TYPE_COLORS[event.event_type] || "var(--color-primary)";
+  let metadata = event.metadata;
+  if (typeof metadata === "string") {
+    try { metadata = JSON.parse(metadata); } catch { metadata = {}; }
+  }
   return (
     <div
       className={`timeline-item ${selected ? "timeline-item-selected" : ""}`}
@@ -179,14 +185,14 @@ function EventTimelineItem({
       <div className="timeline-content">
         <div className="timeline-type">{EVENT_TYPE_LABELS[event.event_type] || event.event_type}</div>
         <div className="timeline-time">{formatTime(event.event_time)}</div>
-        {event.metadata?.fault_code && (
-          <div className="timeline-meta">Code: {event.metadata.fault_code}</div>
+        {metadata?.fault_code && (
+          <div className="timeline-meta">Code: {metadata.fault_code}</div>
         )}
-        {event.metadata?.duration_seconds && (
-          <div className="timeline-meta">{formatDuration(event.metadata.duration_seconds)}</div>
+        {metadata?.duration_seconds && (
+          <div className="timeline-meta">{formatDuration(metadata.duration_seconds)}</div>
         )}
-        {event.metadata?.distance_km && (
-          <div className="timeline-meta">{formatDist(event.metadata.distance_km)}</div>
+        {metadata?.distance_km && (
+          <div className="timeline-meta">{formatDist(metadata.distance_km)}</div>
         )}
       </div>
       <div
@@ -218,13 +224,18 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
   const [tripLoading, setTripLoading] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [tripsError, setTripsError] = useState<string | null>(null);
+  const [tripErrors, setTripErrors] = useState<string[]>([]);
+  const tripRequest = useRef(0);
 
   useEffect(() => {
     subscribeVehicleTracking(vehicleId);
 
     const unsubscribe = subscribeToFleetEvents((msg) => {
       if (msg.vehicleId === vehicleId && msg.eventType === "vehicle:trip") {
-        api.getVehicleTrips(vehicleId).then((r) => setTrips(r.trips || []));
+        api.getVehicleTrips(vehicleId).then((r) => { setTrips(r.trips || []); setTripsError(null); })
+          .catch(() => setTripsError("Trip history is temporarily unavailable. Existing data remains visible."));
       }
     });
 
@@ -236,35 +247,60 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([
+    setTripsLoading(true);
+    let active = true;
+    setDetail(null);
+    setTrips([]);
+    setSelectedTrip(null);
+    setRouteGeoJson(null);
+    setTripEvents([]);
+    setQuality(null);
+    setTripErrors([]);
+    setDetailError(null);
+    setTripsError(null);
+    tripRequest.current++;
+    Promise.allSettled([
       api.getVehicleDetail(vehicleId),
       api.getVehicleTrips(vehicleId),
     ])
-      .then(([detailRes, tripsRes]) => {
-        setDetail(detailRes);
-        if (detailRes.vehicle) {
-          vehicleStore.initSnapshot([
-            {
-              ...detailRes.vehicle,
-              latest_values: detailRes.currentState?.latestValues || {},
-              signal_timestamps: detailRes.currentState?.signalTimestamps || {},
-              state_updated_at: detailRes.currentState?.updatedAt,
-            },
-          ]);
+      .then(([detailResult, tripsResult]) => {
+        if (!active) return;
+        if (detailResult.status === "fulfilled") {
+          const detailRes = detailResult.value;
+          setDetail(detailRes);
+          if (detailRes.vehicle) {
+            vehicleStore.initSnapshot([
+              {
+                ...detailRes.vehicle,
+                latest_values: detailRes.currentState?.latestValues || {},
+                signal_timestamps: detailRes.currentState?.signalTimestamps || {},
+                state_updated_at: detailRes.currentState?.updatedAt,
+              },
+            ]);
+          }
+        } else {
+          setDetailError("Vehicle signals and data-quality counts are temporarily unavailable. Trip data is shown below.");
         }
-        const sortedTrips = tripsRes.trips || [];
+        if (tripsResult.status === "rejected") {
+          setTripsError("Trip history is temporarily unavailable. Vehicle signals remain visible.");
+          return;
+        }
+        const sortedTrips = tripsResult.value.trips || [];
         setTrips(sortedTrips);
         if (sortedTrips.length > 0) {
           selectTrip(sortedTrips[0]);
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (active) { setLoading(false); setTripsLoading(false); } });
+    return () => { active = false; tripRequest.current++; };
   }, [vehicleId]);
 
   const loadTrips = useCallback(() => {
     setTripsLoading(true);
+    setTripsError(null);
     api.getVehicleTrips(vehicleId, fromDate || undefined, toDate || undefined)
       .then((r) => setTrips(r.trips || []))
+      .catch(() => setTripsError("Could not update trip history. Previously loaded trips remain visible."))
       .finally(() => setTripsLoading(false));
   }, [vehicleId, fromDate, toDate]);
 
@@ -275,18 +311,26 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
     setTripEvents([]);
     setSelectedEventId(null);
     setQuality(null);
+    setTripErrors([]);
+    const requestId = ++tripRequest.current;
 
-    Promise.all([
+    Promise.allSettled([
       api.getTripRoute(vehicleId, trip.id),
       api.getTripEvents(vehicleId, trip.id),
       api.getTripQuality(vehicleId, trip.id),
     ])
       .then(([routeRes, eventsRes, qualityRes]) => {
-        setRouteGeoJson(routeRes);
-        setTripEvents(eventsRes.events || []);
-        setQuality(qualityRes);
+        if (requestId !== tripRequest.current) return;
+        const errors: string[] = [];
+        if (routeRes.status === "fulfilled") setRouteGeoJson(routeRes.value);
+        else errors.push("This trip has no available route. Valid vehicle location and trip details remain visible.");
+        if (eventsRes.status === "fulfilled") setTripEvents(eventsRes.value.events || []);
+        else errors.push("Trip events are temporarily unavailable.");
+        if (qualityRes.status === "fulfilled") setQuality(qualityRes.value);
+        else errors.push("Trip quality details are temporarily unavailable.");
+        setTripErrors(errors);
       })
-      .finally(() => setTripLoading(false));
+      .finally(() => { if (requestId === tripRequest.current) setTripLoading(false); });
   }, [vehicleId]);
 
   if (loading && !detail && !liveEntry) {
@@ -331,9 +375,10 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
   const currentLat = liveEntry?.latitude ?? (latestValues.latitude !== undefined ? Number(latestValues.latitude) : null);
   const currentLon = liveEntry?.longitude ?? (latestValues.longitude !== undefined ? Number(latestValues.longitude) : null);
 
-  const livePositionData: LivePosition | null = currentLat !== null && currentLon !== null ? {
-    latitude: currentLat,
-    longitude: currentLon,
+  const hasValidLocation = isMapCoordinate([currentLon, currentLat]);
+  const livePositionData: LivePosition | null = hasValidLocation ? {
+    latitude: currentLat!,
+    longitude: currentLon!,
     speed: currentSpeed,
     state: liveEntry?.movementState || vehicle.live_state || "CONNECTED",
     sourceEventTime: liveEntry?.lastDataAt || detail?.currentState?.updatedAt,
@@ -341,7 +386,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
 
   const breadcrumbsData = liveEntry?.breadcrumbs && liveEntry.breadcrumbs.length > 0
     ? liveEntry.breadcrumbs
-    : (currentLat && currentLon ? [[currentLon, currentLat] as [number, number]] : []);
+    : (hasValidLocation ? [[currentLon!, currentLat!] as [number, number]] : []);
 
   const movementState = liveEntry?.movementState || vehicle.live_state || null;
   const dataFreshness = liveEntry?.dataFreshness || null;
@@ -367,6 +412,15 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
           </div>
         )}
       </div>
+
+      {detailError && <div className="alert alert-warning">{detailError}</div>}
+      {detail?.dataQuality && (
+        <div className="vehicle-detail-signals" aria-label="Vehicle data quality">
+          <SignalCard label="Valid telemetry records" value={detail.dataQuality.validEvents.toLocaleString()} />
+          <SignalCard label="Records quarantined (all time)" value={detail.dataQuality.quarantinedEvents.toLocaleString()} />
+          <SignalCard label="Unresolved data issues" value={detail.dataQuality.unresolvedEvents.toLocaleString()} />
+        </div>
+      )}
 
       <div className="vehicle-detail-signals">
         <div className="signal-card" data-testid="speed-card">
@@ -395,7 +449,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
         />
         <SignalCard
           label="Location"
-          value={currentLat && currentLon ? `${currentLat.toFixed(4)}, ${currentLon.toFixed(4)}` : undefined}
+          value={hasValidLocation ? `${currentLat!.toFixed(4)}, ${currentLon!.toFixed(4)}` : undefined}
           ts={signalTimestamps.latitude}
         />
         <SignalCard
@@ -418,11 +472,12 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
                 <button className="btn btn-secondary btn-sm" onClick={loadTrips}>Filter</button>
               </div>
             </div>
+            {tripsError && <div className="alert alert-warning" style={{ margin: 12 }}>{tripsError}</div>}
             {tripsLoading ? (
               <div className="loading-state" style={{ padding: 20 }}><div className="spinner" /></div>
             ) : trips.length === 0 ? (
               <div className="empty-state" style={{ padding: 20 }}>
-                <div className="empty-state-text">No trips found</div>
+                <div className="empty-state-text">{tripsError ? "Trip history is unavailable" : "No trips found"}</div>
               </div>
             ) : (
               <div style={{ overflowX: "auto" }}>
@@ -460,6 +515,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
               </div>
               <div style={{ padding: "12px 16px" }}>
                 <DataQualityBanner quality={quality} />
+                {tripErrors.map(message => <div key={message} className="alert alert-warning">{message}</div>)}
                 {tripLoading ? (
                   <div className="loading-state" style={{ padding: 20 }}><div className="spinner" /></div>
                 ) : tripEvents.length === 0 ? (
@@ -483,6 +539,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
 
         <div className="vehicle-detail-main">
           <div className="card" style={{ height: "100%", minHeight: 450 }}>
+            <ErrorBoundary key={vehicleId} fallback={<div className="map-unavailable"><div className="map-unavailable-title">Map unavailable</div><div className="map-unavailable-reason">Your vehicle signals, trips, and data-quality counts remain visible.</div></div>}>
             <MapView
               routeGeoJson={routeGeoJson}
               tripEvents={tripEvents}
@@ -492,6 +549,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
               livePosition={livePositionData}
               liveBreadcrumbs={breadcrumbsData}
             />
+            </ErrorBoundary>
           </div>
         </div>
       </div>

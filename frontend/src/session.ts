@@ -28,7 +28,8 @@ let current: SessionState | null = (() => {
 export function getApiBase(): string {
   const envUrl = (import.meta as any).env?.VITE_API_URL || (import.meta as any).env?.VITE_API_BASE_URL;
   if (envUrl && typeof envUrl === "string") {
-    return `${envUrl.replace(/\/+$/, "")}/api`;
+    const base = envUrl.replace(/\/+$/, "");
+    return base.endsWith("/api") ? base : `${base}/api`;
   }
   return "/api";
 }

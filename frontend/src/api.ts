@@ -1,9 +1,6 @@
-import { getToken, clearSession } from "./session";
+import { getToken, clearSession, getApiBase } from "./session";
 
-const rawApiUrl = (import.meta as any).env?.VITE_API_URL || (import.meta as any).env?.VITE_API_BASE_URL;
-const API_BASE = rawApiUrl
-  ? `${rawApiUrl.replace(/\/+$/, "")}/api`
-  : "/api";
+const API_BASE = getApiBase();
 
 export class ApiError extends Error {
   constructor(
@@ -79,7 +76,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export async function authedFetch(url: string, options?: RequestInit): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(url, {
+    const resolvedUrl = url.startsWith("/api/") ? `${API_BASE}${url.slice(4)}` : url;
+    res = await fetch(resolvedUrl, {
       ...options,
       headers: {
         ...authHeaders(),

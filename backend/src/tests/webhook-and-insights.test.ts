@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -283,6 +283,35 @@ describe("Webhook Authentication, Delivery Guarantees, and Isolation", () => {
 
     const exhausted = getExhaustedDeliveries();
     expect(exhausted.some((d) => d.id === delId)).toBe(true);
+  });
+
+  it("does not resend pending webhooks when delivery batches overlap", async () => {
+    const sub = { id: "sub_overlap", oem_id: "oem_crestline", target_url: "http://127.0.0.1/webhook", secret: "secret" };
+    getSimulatorDb().prepare(
+      "INSERT INTO sim_subscriptions (id, oem_id, target_url, secret, active) VALUES (?, ?, ?, ?, 1)"
+    ).run(sub.id, sub.oem_id, sub.target_url, sub.secret);
+    setSimulatorScenario("delivery_outage", true);
+    const deliveryId = enqueueWebhookDelivery(sub, "evt_overlap", { speed: 30 });
+    await processPendingDeliveries();
+    setSimulatorScenario("delivery_outage", false);
+
+    let finishRequest!: (response: Response) => void;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      new Promise<Response>((resolve) => { finishRequest = resolve; })
+    );
+    try {
+      const first = processPendingDeliveries();
+      const second = processPendingDeliveries();
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      finishRequest(new Response("{}", { status: 200 }));
+      expect(await Promise.all([first, second])).toEqual([1, 1]);
+      const row = getSimulatorDb().prepare(
+        "SELECT status, attempts FROM sim_webhook_deliveries WHERE id = ?"
+      ).get(deliveryId);
+      expect(row).toEqual({ status: "DELIVERED", attempts: 1 });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("cancels pending webhook deliveries upon disconnect", async () => {

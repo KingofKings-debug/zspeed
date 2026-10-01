@@ -176,12 +176,6 @@ export function processRawEvent(
     return { status: "QUARANTINED", eventId: rawEventId, message: "Expired authorisation" };
   }
 
-  if (connectionRow.oem_id === "oem_navarro") {
-    quarantineEvent(rawEventId, rawEvent, connectionRow.oem_id,
-      "Unsupported OEM for data ingestion", "UNSUPPORTED_OEM");
-    return { status: "QUARANTINED", eventId: rawEventId, message: "Unsupported OEM" };
-  }
-
   let payloadObj: any;
   try {
     payloadObj = JSON.parse(rawEvent.payload);

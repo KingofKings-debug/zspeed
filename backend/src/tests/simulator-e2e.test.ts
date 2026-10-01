@@ -25,6 +25,8 @@ import {
 import { ingestEvent, replayEvents } from "../services/ingestion.service.js";
 import { drainWorker } from "../services/worker.service.js";
 import { vehicleRepository } from "../repositories/vehicle.repository.js";
+import { getConnector } from "../connectors/index.js";
+import { deliverBatch } from "../services/delivery.service.js";
 
 const SIM_PORT = 3199;
 const PLATFORM_PORT = 3198;
@@ -111,6 +113,49 @@ afterEach(() => {
 });
 
 describe("Independent OEM Simulation Server and End-to-End Pipeline", () => {
+  it("repairs existing Navarro mappings and processes simulator telemetry", async () => {
+    process.env.NAVARRO_BASE_URL = `http://127.0.0.1:${SIM_PORT}/oem/navarro`;
+    const db = getDb();
+    db.prepare("DELETE FROM mapping_rules WHERE mapping_profile_id = 'prof_navarro_v1'").run();
+    db.prepare("DELETE FROM mapping_profiles WHERE id = 'prof_navarro_v1'").run();
+    db.prepare("DELETE FROM oem_format_versions WHERE id = 'fmt_navarro_telemetry_v1'").run();
+    seedDatabase();
+    seedDatabase();
+    expect(db.prepare("SELECT COUNT(*) AS count FROM mapping_rules WHERE mapping_profile_id = 'prof_navarro_v1'").get()).toEqual({ count: 7 });
+    engine.reset(42, 10, 1.0);
+    engine.sampleTelemetry(true);
+    db.prepare("INSERT INTO vehicles (id, fleet_id, vin, data_status) VALUES (?, ?, ?, 'NO_CONNECTION')")
+      .run("veh_nav_01", FLEET_ID, "3NAVR11859F300001");
+    const connection = createConnection(FLEET_ID, "oem_navarro", "Navarro telemetry");
+    try {
+      expect((await authorizeConnection(connection.id, FLEET_ID, { username: "fleet" })).success).toBe(true);
+      await activateConnection(connection.id, FLEET_ID, [{ oem_vehicle_id: "NAV-001", vin: "3NAVR11859F300001", categories: ["location", "odometer"] }]);
+      expect(await deliverBatch(connection.id)).toBe(1);
+      drainWorker();
+      const vehicle = vehicleRepository.findByVin("3NAVR11859F300001", FLEET_ID);
+      expect(vehicle?.data_status).toBe("RECEIVING");
+      const event = db.prepare("SELECT canonical_values FROM normalized_events WHERE vehicle_id = 'veh_nav_01'").get() as { canonical_values: string };
+      expect(JSON.parse(event.canonical_values)).toMatchObject({ ignition_status: "ON" });
+      expect(JSON.parse(event.canonical_values).latitude).toBeTypeOf("number");
+    } finally {
+      await disconnectConnection(connection.id, FLEET_ID);
+      delete process.env.NAVARRO_BASE_URL;
+    }
+  });
+  it("discovers Navarro vehicles from the current simulator fleet", async () => {
+    process.env.NAVARRO_BASE_URL = `http://127.0.0.1:${SIM_PORT}/oem/navarro`;
+    try {
+      engine.reset(42, 8, 1.0);
+      const discovered = await getConnector("oem_navarro")!.discoverVehicles("navarro_test");
+      const rows = getSimulatorDb().prepare(
+        "SELECT id, vin FROM sim_vehicles WHERE oem_id = 'oem_navarro' ORDER BY id"
+      ).all() as { id: string; vin: string }[];
+      expect(discovered.map((vehicle) => ({ id: vehicle.oem_vehicle_id, vin: vehicle.vin }))).toEqual(rows);
+      expect(discovered).toHaveLength(1);
+    } finally {
+      delete process.env.NAVARRO_BASE_URL;
+    }
+  });
   it("maintains continuous kinematic and physical vehicle transitions", () => {
     const simDb = getSimulatorDb();
     const v1Before = simDb.prepare("SELECT * FROM sim_vehicles WHERE id = 'VLT-001'").get() as any;

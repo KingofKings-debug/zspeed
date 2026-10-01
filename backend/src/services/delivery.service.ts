@@ -1,6 +1,7 @@
 import { ingestEvent } from "./ingestion.service.js";
 import { query, queryOne, run } from "../db/pool.js";
 import { getSecret } from "./vault.service.js";
+import { getOemBaseUrl } from "../connectors/urls.js";
 
 interface ActiveDelivery {
   connectionId: string;
@@ -15,19 +16,6 @@ interface ActiveDelivery {
 }
 
 const activeDeliveries = new Map<string, ActiveDelivery>();
-
-function getOemBaseUrl(oemId: string): string {
-  if (oemId === "oem_voltera") {
-    return process.env.VOLTERA_BASE_URL || "http://127.0.0.1:3002/oem/voltera";
-  }
-  if (oemId === "oem_crestline") {
-    return process.env.CRUX_BASE_URL || process.env.CRESTLINE_BASE_URL || "http://127.0.0.1:3002/oem/crestline";
-  }
-  if (oemId === "oem_navarro") {
-    return process.env.NAVARRO_BASE_URL || "http://127.0.0.1:3002/oem/navarro";
-  }
-  return "http://127.0.0.1:3002";
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

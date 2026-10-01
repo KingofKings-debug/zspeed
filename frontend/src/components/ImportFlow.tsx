@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { api } from "../api";
+import { getApiBase } from "../session";
 import type { ImportBatch, ImportRow } from "../types";
 
 interface ImportFlowProps {
@@ -119,7 +120,7 @@ export default function ImportFlow({ onClose }: ImportFlowProps) {
                   className="btn btn-ghost btn-sm"
                   onClick={() => {
                     const a = document.createElement("a");
-                    a.href = "/api/sample-csv";
+                    a.href = `${getApiBase()}/sample-csv`;
                     a.download = "fleet-sample.csv";
                     a.click();
                   }}

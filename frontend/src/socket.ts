@@ -3,7 +3,7 @@ import type { FleetSocketMessage } from "./types";
 import { vehicleStore } from "./store/vehicleStore";
 import { getToken, getSession, getApiBase } from "./session";
 
-const SOCKET_URL = (import.meta as any).env?.VITE_SOCKET_URL || (import.meta as any).env?.VITE_API_URL || undefined;
+const SOCKET_URL = (import.meta as any).env?.VITE_SOCKET_URL || getApiBase().replace(/\/api$/, "") || undefined;
 
 let socket: Socket | null = null;
 let lastContiguousSequence = 0;

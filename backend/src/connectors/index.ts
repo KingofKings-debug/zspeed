@@ -4,21 +4,22 @@ import { storeSecret } from "../services/vault.service.js";
 import { startDemoDelivery, stopDemoDelivery } from "../services/delivery.service.js";
 import { queryOne, run } from "../db/pool.js";
 import crypto from "crypto";
+import { getOemBaseUrl } from "./urls.js";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getVolteraBaseUrl(): string {
-  return process.env.VOLTERA_BASE_URL || "http://127.0.0.1:3002/oem/voltera";
+  return getOemBaseUrl("oem_voltera");
 }
 
 function getCrestlineBaseUrl(): string {
-  return process.env.CRUX_BASE_URL || process.env.CRESTLINE_BASE_URL || "http://127.0.0.1:3002/oem/crestline";
+  return getOemBaseUrl("oem_crestline");
 }
 
 function getNavarroBaseUrl(): string {
-  return process.env.NAVARRO_BASE_URL || "http://127.0.0.1:3002/oem/navarro";
+  return getOemBaseUrl("oem_navarro");
 }
 
 class VolteraDemoConnector implements OemConnectorContract {
@@ -450,6 +451,15 @@ class NavarroDemoConnector implements OemConnectorContract {
 
   async discoverVehicles(_accountId: string): Promise<OemDiscoveredVehicle[]> {
     await delay(50);
+    try {
+      const res = await fetch(`${getNavarroBaseUrl()}/v1/vehicles`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        if (Array.isArray(data.vehicles)) return data.vehicles;
+      }
+    } catch {}
     return [
       {
         oem_vehicle_id: "NAV-001",

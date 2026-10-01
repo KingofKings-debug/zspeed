@@ -81,6 +81,7 @@ export function seedDatabase(): void {
     if (!gpsCheck) {
       seedGpsSignalsAndMappings();
     }
+    seedNavarroMapping();
     console.log("Seed complete.");
     return;
   }
@@ -196,7 +197,53 @@ export function seedDatabase(): void {
     );
   }
 
+  seedNavarroMapping();
   console.log("Seed data inserted successfully.");
+}
+
+function seedNavarroMapping(): void {
+  // Navarro already emits telemetry, but its missing contract quarantined every sample.
+  const formatId = "fmt_navarro_telemetry_v1";
+  const profileId = "prof_navarro_v1";
+  run(
+    `INSERT OR IGNORE INTO oem_format_versions (id, oem_id, event_type, format_version, expected_structure)
+     VALUES (?, 'oem_navarro', 'telemetry', 'v1', ?)`,
+    [formatId, JSON.stringify({
+      required_fields: [
+        { path: "vehicle_id", type: "string" },
+        { path: "timestamp", type: "string", is_time: true },
+        { path: "speed", type: "number", min: 0, max: 300 },
+        { path: "soc", type: "number", min: 0, max: 100 },
+      ],
+      optional_fields: [
+        { path: "odometer", type: "number", min: 0 },
+        { path: "lat", type: "number", is_lat: true, min: -90, max: 90 },
+        { path: "lon", type: "number", is_lon: true, min: -180, max: 180 },
+        { path: "status", type: "string" },
+      ],
+    })]
+  );
+  run(
+    `INSERT OR IGNORE INTO mapping_profiles
+     (id, oem_format_version_id, mapping_version, canonical_schema_version, status)
+     VALUES (?, ?, '1.0', '1.0', 'ACTIVE')`,
+    [profileId, formatId]
+  );
+  const fields = [
+    ["speed", "sig_speed"], ["soc", "sig_soc"], ["odometer", "sig_odometer"],
+    ["lat", "sig_latitude"], ["lon", "sig_longitude"], ["timestamp", "sig_event_time"],
+    ["status", "sig_ignition"],
+  ];
+  for (const [source, signal] of fields) {
+    run(
+      `INSERT OR IGNORE INTO mapping_rules
+       (id, mapping_profile_id, source_field_path, destination_signal_id, conversion_type, enum_mapping)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [`rule_navarro_${source}`, profileId, source, signal,
+        source === "status" ? "ENUM_MAP" : "DIRECT",
+        source === "status" ? JSON.stringify({ MOVING: "ON", IDLE: "ON", PARKED: "OFF", CHARGING: "OFF" }) : null]
+    );
+  }
 }
 
 function seedGpsSignalsAndMappings(): void {

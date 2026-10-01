@@ -53,7 +53,18 @@ export function enqueueWebhookDelivery(
   return id;
 }
 
-export async function processPendingDeliveries(): Promise<number> {
+let processingDeliveries: Promise<number> | null = null;
+
+export function processPendingDeliveries(): Promise<number> {
+  // Sampling can enqueue many webhooks while the previous request is awaiting HTTP.
+  if (processingDeliveries) return processingDeliveries;
+  processingDeliveries = processPendingBatch().finally(() => {
+    processingDeliveries = null;
+  });
+  return processingDeliveries;
+}
+
+async function processPendingBatch(): Promise<number> {
   const outage = getSimulatorScenario("delivery_outage");
   if (outage.enabled) {
     return 0;

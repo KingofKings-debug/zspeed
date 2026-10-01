@@ -30,6 +30,8 @@ This is the first working milestone of the ZSpeed Fleet Operations connected-veh
 
 ## How to Run Locally
 
+For one-command Docker startup and AWS deployment, see [DEPLOYMENT.md](./DEPLOYMENT.md). On Windows with Docker Desktop running: `./start.ps1`.
+
 ### 1. Start Platform Backend
 ```bash
 cd backend

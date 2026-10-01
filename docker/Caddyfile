@@ -1,0 +1,35 @@
+{$SITE_ADDRESS::80} {
+	encode gzip
+	@console path /simulator /simulator/* /api/simulator /api/simulator/*
+	basic_auth @console {
+		{$ADMIN_USERNAME} {$SIMULATOR_PASSWORD_HASH}
+	}
+	@simulatorApi path /api/simulator /api/simulator/*
+	handle @simulatorApi {
+		reverse_proxy simulator:3002 {
+			header_up X-Simulator-Admin-Key {$SIMULATOR_ADMIN_KEY}
+			header_up -Authorization
+			header_up -Origin
+		}
+	}
+	@backend path /api/* /socket.io /socket.io/*
+	handle @backend {
+		reverse_proxy backend:3001
+	}
+	redir /simulator /simulator/ 308
+	handle_path /simulator/* {
+		root * /srv/simulator
+		try_files {path} /index.html
+		file_server
+	}
+	handle {
+		root * /srv/fleet
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# Container-only liveness endpoint; this port is not published.
+http://:8080 {
+	respond /healthz "ok" 200
+}

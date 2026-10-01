@@ -312,7 +312,8 @@ class CrestlineDemoConnector implements OemConnectorContract {
     const baseUrl = getCrestlineBaseUrl();
     const webhookSecret = `whsec_${crypto.randomBytes(16).toString("hex")}`;
     const platformPort = process.env.PORT || "3001";
-    const targetUrl = process.env.PLATFORM_WEBHOOK_URL || `http://127.0.0.1:${platformPort}/api/ingestion/webhooks/${connectionId}`;
+    const platformBaseUrl = (process.env.PLATFORM_BASE_URL || `http://127.0.0.1:${platformPort}`).replace(/\/$/, "");
+    const targetUrl = process.env.PLATFORM_WEBHOOK_URL || `${platformBaseUrl}/api/ingestion/webhooks/${connectionId}`;
 
     try {
       const res = await fetch(`${baseUrl}/v1/webhooks/subscriptions`, {

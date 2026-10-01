@@ -114,6 +114,30 @@ afterEach(() => {
 });
 
 describe("Webhook Authentication, Delivery Guarantees, and Isolation", () => {
+  it("registers per-connection callbacks using the configured container backend address", async () => {
+    const originalBase = process.env.PLATFORM_BASE_URL;
+    const originalWebhook = process.env.PLATFORM_WEBHOOK_URL;
+    process.env.PLATFORM_BASE_URL = "http://backend:3001/";
+    delete process.env.PLATFORM_WEBHOOK_URL;
+    try {
+      const conn = createConnection(FLEET_A, "oem_crestline", "Container callback");
+      const { getConnector } = await import("../connectors/index.js");
+      const connector = getConnector("oem_crestline")!;
+      try {
+        await connector.activate(conn.id, FLEET_A, []);
+        const subscription = getSimulatorDb().prepare("SELECT target_url FROM sim_subscriptions ORDER BY rowid DESC LIMIT 1").get() as { target_url: string };
+        expect(subscription.target_url).toBe(`http://backend:3001/api/ingestion/webhooks/${conn.id}`);
+      } finally {
+        await connector.disconnect(conn.id);
+      }
+    } finally {
+      if (originalBase === undefined) delete process.env.PLATFORM_BASE_URL;
+      else process.env.PLATFORM_BASE_URL = originalBase;
+      if (originalWebhook === undefined) delete process.env.PLATFORM_WEBHOOK_URL;
+      else process.env.PLATFORM_WEBHOOK_URL = originalWebhook;
+    }
+  });
+
   it("rejects webhooks with missing subscription", async () => {
     const conn = createConnection(FLEET_A, "oem_crestline", "No Sub Conn");
     const payload = { vehicle_identifier: "CRS-001", event_id: "evt_1", state: { velocity_kmh: 50 } };
@@ -329,6 +353,8 @@ describe("Webhook Authentication, Delivery Guarantees, and Isolation", () => {
       headers: { "X-API-Key": "crestline_live_key" },
     });
     expect(delRes.status).toBe(200);
+
+    await processPendingDeliveries();
 
     const deliveryRow = getSimulatorDb().prepare("SELECT status FROM sim_webhook_deliveries WHERE id = ?").get(delId) as any;
     expect(deliveryRow.status).toBe("CANCELLED");

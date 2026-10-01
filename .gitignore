@@ -7,3 +7,5 @@ dist
 *.db-wal
 *.tsbuildinfo
 simulator-manifest.json
+docker/credentials.txt
+deployment-*.tar.gz

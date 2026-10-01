@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ZSpeed single-host Docker deployment (billable EC2, EBS and public IPv4).
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet with a route to an Internet Gateway.
+  SourceBucket:
+    Type: String
+  SourceKey:
+    Type: String
+  Domain:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-zA-Z0-9.-]+$'
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues: [t3.small, t3.medium, t3.large]
+  ImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+Conditions:
+  HasDomain: !Not [!Equals [!Ref Domain, '']]
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ZSpeed web access only; management through Systems Manager
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ReadDeploymentArchive
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${SourceBucket}/${SourceKey}
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref Role]
+  Server:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal: {Timeout: PT30M}
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      MetadataOptions: {HttpTokens: required}
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref SubnetId
+          GroupSet: [!Ref SecurityGroup]
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: {VolumeSize: 30, VolumeType: gp3, Encrypted: true, DeleteOnTermination: false}
+      Tags:
+        - {Key: Name, Value: !Sub '${AWS::StackName}-server'}
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          dnf install -y docker aws-cfn-bootstrap
+          trap '/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource Server --region ${AWS::Region}' EXIT
+          systemctl enable --now docker
+          mkdir -p /usr/local/lib/docker/cli-plugins /opt/zspeed
+          curl -fsSL https://github.com/docker/compose/releases/download/v2.39.4/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+          curl -fsSL https://github.com/docker/buildx/releases/download/v0.26.1/buildx-v0.26.1.linux-amd64 -o /usr/local/lib/docker/cli-plugins/docker-buildx
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+          aws s3 cp s3://${SourceBucket}/${SourceKey} /tmp/zspeed.tar.gz --region ${AWS::Region}
+          tar -xzf /tmp/zspeed.tar.gz -C /opt/zspeed
+          cd /opt/zspeed
+          export SITE_ADDRESS='${Domain}'
+          sh start.sh > /var/log/zspeed-startup.log 2>&1
+Outputs:
+  FleetUrl:
+    Value: !If [HasDomain, !Sub 'https://${Domain}', !Sub 'http://${Server.PublicIp}']
+  SimulatorUrl:
+    Value: !If [HasDomain, !Sub 'https://${Domain}/simulator/', !Sub 'http://${Server.PublicIp}/simulator/']
+  InstanceId:
+    Value: !Ref Server
+  LoginInstructions:
+    Value: Open Systems Manager Session Manager for the instance, then sudo cat /opt/zspeed/docker/credentials.txt

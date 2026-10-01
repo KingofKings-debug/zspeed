@@ -126,6 +126,11 @@ async function processPendingBatch(): Promise<number> {
       }
     }
 
+    // A disconnect can cancel this delivery while its HTTP request is in flight.
+    // Keep that cancellation instead of resurrecting a retry or marking it delivered.
+    const current = db.prepare("SELECT status FROM sim_webhook_deliveries WHERE id = ?").get(item.id) as { status: string } | undefined;
+    if (current?.status !== "PENDING") continue;
+
     const nextAttempts = item.attempts + 1;
     if (success) {
       db.prepare(`

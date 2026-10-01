@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/data
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.log
+**/*.tsbuildinfo
+.git
+.codex
+.agents
+deployment-*.tar.gz
+simulator-manifest.json
+docker/credentials.txt

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { useFleetVehicles, vehicleStore, type LiveVehicleEntry } from "../store/vehicleStore";
 
 function renderMovementBadge(state: string) {
@@ -39,6 +39,7 @@ export default function VehicleList({ onImport, onSelectVehicle }: VehicleListPr
   const storeEntries = useFleetVehicles();
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [addVin, setAddVin] = useState("");
   const [addLabel, setAddLabel] = useState("");
   const [adding, setAdding] = useState(false);
@@ -48,10 +49,12 @@ export default function VehicleList({ onImport, onSelectVehicle }: VehicleListPr
   async function loadVehicles(searchTerm?: string) {
     try {
       setLoading(true);
+      setLoadError(null);
       const data = await api.getVehicles(searchTerm);
       vehicleStore.initSnapshot(data.vehicles);
-    } catch (err) {
-      console.error("Failed to load vehicles:", err);
+    } catch (err: any) {
+      if (err instanceof ApiError && err.status === 401) return;
+      setLoadError(err.message || "Failed to load vehicles.");
     } finally {
       setLoading(false);
     }
@@ -168,6 +171,13 @@ export default function VehicleList({ onImport, onSelectVehicle }: VehicleListPr
           <div className="loading-state">
             <div className="spinner spinner-lg" />
             Loading vehicles...
+          </div>
+        ) : loadError ? (
+          <div className="card-body">
+            <div className="alert alert-error" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <span>{loadError}</span>
+              <button className="btn btn-secondary btn-sm" onClick={() => loadVehicles(search || undefined)}>Retry</button>
+            </div>
           </div>
         ) : filteredEntries.length === 0 ? (
           <div className="empty-state">

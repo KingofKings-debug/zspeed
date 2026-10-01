@@ -12,6 +12,7 @@ import connectionRoutes from "./routes/connection.routes.js";
 import integrationRoutes from "./routes/integration.routes.js";
 import ingestionRoutes from "./routes/ingestion.routes.js";
 import quarantineRoutes from "./routes/quarantine.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 import vehicleDetailRoutes from "./routes/vehicle-detail.routes.js";
 import { startWorker } from "./services/worker.service.js";
 import { initializeDeliveries } from "./services/delivery.service.js";
@@ -36,6 +37,8 @@ app.use(
   })
 );
 app.use(express.urlencoded({ extended: true }));
+
+app.use("/api/auth", authRoutes);
 
 app.use((req, res, next) => {
   if (
@@ -82,8 +85,22 @@ async function start() {
     startWorker();
     initializeDeliveries();
 
-    httpServer.listen(config.port, () => {
-      console.log(`Server running on port ${config.port}`);
+    httpServer.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `\n[ERROR] Port ${config.port} is already in use.\n` +
+          `Another backend instance may still be running.\n` +
+          `Kill it first:\n` +
+          `  Windows:  netstat -ano | findstr :${config.port}  → then  taskkill /F /PID <pid>\n` +
+          `  Mac/Linux: lsof -ti:${config.port} | xargs kill -9\n`
+        );
+        process.exit(1);
+      }
+      throw err;
+    });
+
+    httpServer.listen(config.port, "0.0.0.0", () => {
+      console.log(`Server running on port ${config.port} (0.0.0.0)`);
       console.log(`CORS origin: ${config.corsOrigin}`);
     });
   } catch (err) {

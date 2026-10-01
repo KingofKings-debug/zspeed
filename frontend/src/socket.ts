@@ -1,11 +1,13 @@
 import { io, Socket } from "socket.io-client";
 import type { FleetSocketMessage } from "./types";
 import { vehicleStore } from "./store/vehicleStore";
+import { getToken, getSession, getApiBase } from "./session";
+
+const SOCKET_URL = (import.meta as any).env?.VITE_SOCKET_URL || (import.meta as any).env?.VITE_API_URL || undefined;
 
 let socket: Socket | null = null;
 let lastContiguousSequence = 0;
 let currentFleetId = "fleet_demo_001";
-let currentAuthToken: string | undefined;
 let currentTrackedVehicleId: string | null = null;
 let isCatchingUp = false;
 
@@ -15,12 +17,18 @@ const messageBuffer = new Map<number, FleetSocketMessage>();
 
 export function getFleetSocket(): Socket {
   if (!socket) {
+    const token = getToken();
+    const session = getSession();
     const authData: Record<string, string> = { fleetId: currentFleetId };
-    if (currentAuthToken) {
-      authData.token = currentAuthToken;
+    if (token) {
+      authData.token = token;
+    }
+    if (session?.fleetId) {
+      authData.fleetId = session.fleetId;
+      currentFleetId = session.fleetId;
     }
 
-    socket = io({
+    socket = io(SOCKET_URL, {
       auth: authData,
       autoConnect: true,
       reconnection: true,
@@ -55,24 +63,36 @@ export function getFleetSocket(): Socket {
   return socket;
 }
 
-export function setAuthenticatedFleet(fleetId: string, token?: string): void {
-  if (fleetId === currentFleetId && token === currentAuthToken) {
-    return;
-  }
-
-  currentFleetId = fleetId;
-  currentAuthToken = token;
-  lastContiguousSequence = 0;
-  messageBuffer.clear();
-  processedMessageIds.clear();
-  vehicleStore.reset();
-
+export function disconnectFleetSocket(): void {
   if (socket) {
     socket.disconnect();
     socket = null;
   }
+  lastContiguousSequence = 0;
+  isCatchingUp = false;
+  currentTrackedVehicleId = null;
+  messageBuffer.clear();
+  processedMessageIds.clear();
+  vehicleStore.setConnectionState("disconnected");
+}
 
-  getFleetSocket();
+export function setAuthenticatedFleet(fleetId: string): void {
+  const fleetChanged = fleetId !== currentFleetId;
+  currentFleetId = fleetId;
+
+  if (fleetChanged || !socket) {
+    lastContiguousSequence = 0;
+    messageBuffer.clear();
+    processedMessageIds.clear();
+    vehicleStore.reset();
+
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+
+    getFleetSocket();
+  }
 }
 
 function applyMessage(msg: FleetSocketMessage): void {
@@ -197,14 +217,15 @@ export async function syncCatchup(): Promise<void> {
 
 async function fetchSnapshotFallback(): Promise<void> {
   try {
+    const token = getToken();
     const headers: Record<string, string> = {};
-    if (currentAuthToken) {
-      headers["Authorization"] = `Bearer ${currentAuthToken}`;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     } else {
       headers["x-fleet-id"] = currentFleetId;
     }
 
-    const res = await fetch("/api/vehicles", { headers });
+    const res = await fetch(`${getApiBase()}/vehicles`, { headers });
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.vehicles)) {

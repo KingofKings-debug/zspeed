@@ -1,29 +1,117 @@
-const API_BASE = "/api";
+import { getToken, clearSession } from "./session";
+
+const rawApiUrl = (import.meta as any).env?.VITE_API_URL || (import.meta as any).env?.VITE_API_BASE_URL;
+const API_BASE = rawApiUrl
+  ? `${rawApiUrl.replace(/\/+$/, "")}/api`
+  : "/api";
+
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: "unauthorized" | "forbidden" | "not_found" | "server_error" | "network" | "bad_response",
+    message: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  if (token) {
+    return { Authorization: `Bearer ${token}` };
+  }
+  return {};
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${url}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+        ...options?.headers,
+      },
+    });
+  } catch {
+    throw new ApiError(0, "network", "Unable to reach the backend. Check that the platform is running on port 3001.");
+  }
 
+  if (res.status === 401) {
+    clearSession();
+    throw new ApiError(401, "unauthorized", "Session expired or authentication required.");
+  }
+  if (res.status === 403) {
+    throw new ApiError(403, "forbidden", "You do not have permission to perform this action.");
+  }
+  if (res.status === 404) {
+    throw new ApiError(404, "not_found", "The requested resource was not found.");
+  }
+  if (res.status >= 500) {
+    const text = await res.text().catch(() => "");
+    let msg = `Backend error (${res.status})`;
+    try {
+      const data = JSON.parse(text);
+      if (data.message) msg = data.message;
+    } catch {}
+    throw new ApiError(res.status, "server_error", msg);
+  }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || `Request failed: ${res.status}`);
+    const text = await res.text().catch(() => "");
+    let msg = `Request failed: ${res.status}`;
+    try {
+      const data = JSON.parse(text);
+      if (data.message) msg = data.message;
+    } catch {}
+    throw new ApiError(res.status, "server_error", msg);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new ApiError(res.status, "bad_response", "Unexpected non-JSON response from backend.");
   }
 
   return res.json();
 }
 
-export const api = {
-  getStats: () => request<{ total: number; receiving: number; no_connection: number; attention: number }>("/vehicles/stats"),
+export async function authedFetch(url: string, options?: RequestInit): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers: {
+        ...authHeaders(),
+        ...options?.headers,
+      },
+    });
+  } catch {
+    throw new ApiError(0, "network", "Unable to reach the backend.");
+  }
+  if (res.status === 401) {
+    clearSession();
+    throw new ApiError(401, "unauthorized", "Session expired or authentication required.");
+  }
+  if (res.status === 403) {
+    throw new ApiError(403, "forbidden", "Permission denied.");
+  }
+  return res;
+}
 
-  getInsights: () => request<{ safety_attention: number; service_needed: number; charging_needed: number; data_quality_issues: number }>("/vehicles/insights"),
+export const api = {
+  getStats: () =>
+    request<{ total: number; receiving: number; no_connection: number; attention: number }>("/vehicles/stats"),
+
+  getInsights: () =>
+    request<{ safety_attention: number; service_needed: number; charging_needed: number; data_quality_issues: number }>(
+      "/vehicles/insights"
+    ),
 
   getInsightDrilldown: (category: string) =>
-    request<{ category: string; count: number; vehicles: any[] }>(`/vehicles/insights/drilldown?category=${encodeURIComponent(category)}`),
+    request<{ category: string; count: number; vehicles: any[] }>(
+      `/vehicles/insights/drilldown?category=${encodeURIComponent(category)}`
+    ),
 
   getVehicles: (search?: string) => {
     const q = search ? `?search=${encodeURIComponent(search)}` : "";
@@ -36,7 +124,7 @@ export const api = {
   previewImport: async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/vehicles/import/preview`, {
+    const res = await authedFetch(`${API_BASE}/vehicles/import/preview`, {
       method: "POST",
       body: formData,
     });
@@ -70,7 +158,10 @@ export const api = {
   discoverVehicles: (connectionId: string) =>
     request<{ vehicles: any[] }>(`/connections/${connectionId}/discover`),
 
-  activateConnection: (connectionId: string, vehicles: { oem_vehicle_id: string; vin: string; categories: string[] }[]) =>
+  activateConnection: (
+    connectionId: string,
+    vehicles: { oem_vehicle_id: string; vin: string; categories: string[] }[]
+  ) =>
     request<{ activated: number; unmapped: number }>(`/connections/${connectionId}/activate`, {
       method: "POST",
       body: JSON.stringify({ vehicles }),
@@ -116,7 +207,9 @@ export const api = {
     }),
 
   getQuarantineRecords: (params: { incident_id?: string; vehicle_id?: string; status?: string }) => {
-    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as any).toString();
+    const q = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v) as any
+    ).toString();
     return request<{ records: any[] }>(`/quarantine/records${q ? "?" + q : ""}`);
   },
 
@@ -143,4 +236,3 @@ export const api = {
   getTripQuality: (vehicleId: string, tripId: string) =>
     request<any>(`/vehicles/${vehicleId}/trips/${tripId}/quality`),
 };
-

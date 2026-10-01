@@ -28,7 +28,14 @@ export const config = {
   port: parseInt(process.env.PORT || "3001", 10),
   corsOrigin: process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(",")
-    : ["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"],
+    : [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
+      ],
   nodeEnv: process.env.NODE_ENV || "development",
   defaultFleetId: process.env.DEFAULT_FLEET_ID || "fleet_demo_001",
   demoMode: process.env.DEMO_MODE !== undefined

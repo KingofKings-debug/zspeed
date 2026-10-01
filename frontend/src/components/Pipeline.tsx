@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api, authedFetch, ApiError } from "../api";
 import type { PipelineHealth, RawEvent, MappingProfile } from "../types";
 import { subscribeToFleetEvents } from "../socket";
+import MappingRepair from "./MappingRepair";
 
 interface SectionState<T> {
   data: T | null;
@@ -30,6 +31,8 @@ export default function Pipeline() {
   const [profiles, setProfiles] = useState<SectionState<MappingProfile[]>>(sectionInit());
   const [activeTab, setActiveTab] = useState<"health" | "quarantine" | "mappings">("health");
   const [replayError, setReplayError] = useState<string | null>(null);
+  const [repairIncidentId, setRepairIncidentId] = useState<string | null>(null);
+  const [repairIssues, setRepairIssues] = useState<any[]>([]);
 
   const loadHealth = useCallback(async () => {
     setHealth((s) => ({ ...s, loading: true, error: null }));
@@ -74,6 +77,7 @@ export default function Pipeline() {
     loadHealth();
     loadQuarantine();
     loadMappings();
+    api.getQuarantineIncidents().then(result => setRepairIssues(result.incidents.filter(incident => incident.status !== "RESOLVED"))).catch(() => {});
     const unsubscribe = subscribeToFleetEvents((msg) => {
       if (
         msg.eventType === "quarantine:count" ||
@@ -251,6 +255,7 @@ export default function Pipeline() {
           ) : (
             <>
               <h2 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "16px" }}>Mapping Profiles</h2>
+              <div className="card" style={{ padding: 16, marginBottom: 20 }}><h3>Guided mapping repair</h3><p className="text-muted">Select an issue to map renamed fields, changed units or status codes, test saved examples, and recover valid history.</p>{repairIssues.length ? <select className="input-field" aria-label="Issue to repair" value="" onChange={event => setRepairIncidentId(event.target.value || null)}><option value="">Choose a data issue…</option>{repairIssues.map(incident => <option key={incident.id} value={incident.id}>{incident.oem_name} · {incident.title} · {incident.unresolved_event_count} events</option>)}</select> : <p>No active issues. Open Data Issues after an OEM format changes.</p>}</div>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -279,11 +284,12 @@ export default function Pipeline() {
                         </span>
                       </td>
                       <td>
-                        {p.status === "ACTIVE" && (
+                        {p.status === "ACTIVE" && !(p as any).repair_connection_id && (
                           <button className="btn btn-sm btn-secondary" onClick={() => handleReplay(p.id)}>
                             Replay Quarantined Events
                           </button>
                         )}
+                        {(p as any).repair_connection_id && <span className="text-muted">Connection-specific repair · use the workbench</span>}
                       </td>
                     </tr>
                   ))}
@@ -293,6 +299,7 @@ export default function Pipeline() {
           )}
         </>
       )}
+      {repairIncidentId && <MappingRepair incidentId={repairIncidentId} onClose={() => { setRepairIncidentId(null); loadMappings(); loadQuarantine(); }} onComplete={() => { loadMappings(); loadQuarantine(); loadHealth(); }} />}
     </div>
   );
 }

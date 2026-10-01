@@ -8,8 +8,10 @@ import { redactSensitive } from "../services/vault.service.js";
 import { getQueueHealth } from "../services/worker.service.js";
 import { AppError } from "../middleware/error.js";
 import { v4 as uuid } from "uuid";
+import mappingRepairRoutes from "./mapping-repair.routes.js";
 
 const router = Router();
+router.use("/repair", mappingRepairRoutes);
 
 router.post("/webhooks/:connectionId", (req, res, next) => {
   try {
@@ -182,11 +184,13 @@ router.get("/mappings", (req, res, next) => {
   try {
     getFleetId(req);
     const profiles = query(`
-      SELECT mp.*, ofv.oem_id, ofv.format_version, ofv.event_type, so.name as oem_name
+      SELECT mp.*, ofv.oem_id, ofv.format_version, ofv.event_type, so.name as oem_name, mr.connection_id AS repair_connection_id
       FROM mapping_profiles mp
       JOIN oem_format_versions ofv ON mp.oem_format_version_id = ofv.id
       LEFT JOIN supported_oems so ON ofv.oem_id = so.id
-    `);
+      LEFT JOIN mapping_repairs mr ON mr.profile_id = mp.id
+      WHERE mr.profile_id IS NULL OR mr.fleet_id = ?
+    `, [getFleetId(req)]);
     res.json({ profiles });
   } catch (err) {
     next(err);
@@ -201,6 +205,7 @@ router.post("/mappings", requireRole("platform_admin"), (req, res, next) => {
     if (!oem_format_version_id || !mapping_version || !canonical_schema_version) {
       throw new AppError(400, "VALIDATION_ERROR", "Missing required fields");
     }
+    if (queryOne("SELECT mr.profile_id FROM mapping_repairs mr JOIN mapping_profiles mp ON mp.id = mr.profile_id WHERE mp.oem_format_version_id = ?", [oem_format_version_id])) throw new AppError(400, "VALIDATION_ERROR", "Create connection-specific versions through the mapping workbench");
 
     const profileId = uuid();
     transaction(() => {
@@ -229,11 +234,13 @@ router.post("/mappings", requireRole("platform_admin"), (req, res, next) => {
 router.post("/mappings/:id/preview", requireRole("platform_admin"), (req, res, next) => {
   try {
     getFleetId(req);
+    const repair = queryOne<any>("SELECT fleet_id FROM mapping_repairs WHERE profile_id = ?", [req.params.id]);
+    if (repair && repair.fleet_id !== getFleetId(req)) throw new AppError(404, "NOT_FOUND", "Mapping profile not found");
     const { payload, raw_event_id } = req.body;
     let samplePayload = payload;
 
     if (!samplePayload && raw_event_id) {
-      const raw = queryOne<{ payload: string }>("SELECT payload FROM raw_events WHERE id = ?", [raw_event_id]);
+      const raw = queryOne<{ payload: string }>("SELECT payload FROM raw_events WHERE id = ? AND fleet_id = ?", [raw_event_id, getFleetId(req)]);
       if (raw) {
         try { samplePayload = JSON.parse(raw.payload); } catch {}
       }
@@ -253,6 +260,8 @@ router.post("/mappings/:id/preview", requireRole("platform_admin"), (req, res, n
 router.post("/mappings/:id/test", requireRole("platform_admin"), (req, res, next) => {
   try {
     getFleetId(req);
+    const repair = queryOne<any>("SELECT fleet_id FROM mapping_repairs WHERE profile_id = ?", [req.params.id]);
+    if (repair && repair.fleet_id !== getFleetId(req)) throw new AppError(404, "NOT_FOUND", "Mapping profile not found");
     const result = runMappingTests(req.params.id);
     res.json(result);
   } catch (err) {
@@ -264,6 +273,7 @@ router.post("/mappings/:id/publish", requireRole("platform_admin"), (req, res, n
   try {
     getFleetId(req);
     const { id } = req.params;
+    if (queryOne("SELECT profile_id FROM mapping_repairs WHERE profile_id = ?", [id])) throw new AppError(400, "VALIDATION_ERROR", "Publish connection-specific repairs through the repair workbench");
     transaction(() => {
       const profile = queryOne<{ oem_format_version_id: string }>(
         "SELECT oem_format_version_id FROM mapping_profiles WHERE id = ?",
@@ -306,6 +316,7 @@ router.post("/replay", requireRole("platform_admin"), (req, res, next) => {
     if (!mapping_profile_id) {
       throw new AppError(400, "VALIDATION_ERROR", "Missing mapping_profile_id");
     }
+    if (queryOne("SELECT profile_id FROM mapping_repairs WHERE profile_id = ?", [mapping_profile_id])) throw new AppError(400, "VALIDATION_ERROR", "Recover connection-specific repair events through the mapping workbench");
 
     if (incident_id) {
       const incident = queryOne<{ fleet_id: string }>(
@@ -318,7 +329,7 @@ router.post("/replay", requireRole("platform_admin"), (req, res, next) => {
       markIncidentReplaying(incident_id);
     }
 
-    const selectionCriteria = { ...(req.body.selection_criteria || {}), fleet_id: fleetId };
+    const selectionCriteria = { ...(req.body.selection_criteria || {}), fleet_id: fleetId, ...(incident_id ? { incident_id } : {}) };
     const result = replayEvents(mapping_profile_id, selectionCriteria);
     res.json(result);
   } catch (err) {

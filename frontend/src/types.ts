@@ -172,7 +172,7 @@ export interface PipelineHealth {
 }
 
 export type QuarantineStatus = "UNRESOLVED" | "MAPPING_READY" | "REPLAYING" | "RESOLVED" | "REPLAY_FAILED";
-export type FailureCategory = "SCHEMA_CHANGE" | "INVALID_VALUE" | "MISSING_VEHICLE_MAPPING" | "EXPIRED_AUTH" | "INFRA_ERROR" | "UNSUPPORTED_OEM" | "UNKNOWN_FORMAT";
+export type FailureCategory = "SCHEMA_CHANGE" | "INVALID_VALUE" | "MISSING_VEHICLE_MAPPING" | "EXPIRED_AUTH" | "INFRA_ERROR" | "UNSUPPORTED_OEM" | "UNKNOWN_FORMAT" | "INVALID_COORDINATES" | "INVALID_TIME" | "TYPE_ERROR" | "IDEMPOTENCY_CONFLICT";
 
 export interface QuarantineIncident {
   id: string;

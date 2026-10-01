@@ -10,6 +10,8 @@ This is the first working milestone of the ZSpeed Fleet Operations connected-veh
 
 ## Features Implemented
 
+Guided OEM schema repair and historical event recovery: see [MAPPING_REPAIR.md](./MAPPING_REPAIR.md) for the UI workflow, supported cases, and safeguards.
+
 1.  **Vehicle Onboarding (CSV Import)**:
     *   Row-level validation.
     *   Duplicate detection against existing fleet vehicles.

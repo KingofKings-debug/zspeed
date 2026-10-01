@@ -1312,3 +1312,44 @@ textarea.input-field {
   color: var(--color-text-secondary);
 }
 
+.repair-modal { width: min(1100px, 96vw); max-width: 1100px; max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; }
+.repair-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 14px 22px; border-bottom: 1px solid var(--color-border-light); }
+.repair-steps button { padding: 10px; border: 0; border-radius: 6px; background: #f1f4f8; color: #536174; cursor: pointer; font: inherit; }
+.repair-steps button.active { background: #e4edfa; color: #2c528c; font-weight: 700; }
+.repair-steps button:disabled { cursor: default; opacity: .5; }
+.repair-body { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+.repair-modal .modal-header, .repair-modal .modal-footer, .repair-steps { flex-shrink: 0; }
+.repair-body h3 { margin: 14px 0 10px; font-size: 17px; }
+.repair-body p { line-height: 1.6; margin: 10px 0 16px; }
+.repair-scope { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 14px; background: #f5f7fa; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
+.repair-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; margin: 12px 0; min-width: 0; }
+.repair-label .input-field { width: 100%; }
+.repair-payload { overflow-x: auto; margin: 14px 0 20px; border: 1px solid var(--color-border-light); border-radius: 8px; }
+.repair-payload td { max-width: 350px; overflow-wrap: anywhere; }
+.repair-payload table { min-width: 620px; }
+.repair-payload details { padding: 12px; }
+.repair-payload pre { max-height: 280px; overflow: auto; font-size: 12px; background: #f6f7f9; padding: 12px; }
+.repair-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.repair-rule-list { display: grid; gap: 12px; }
+.repair-rule { padding: 14px; border: 1px solid var(--color-border-light); border-radius: 8px; background: white; }
+.repair-rule-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.repair-rule-title .btn { margin-left: auto; }
+.repair-rule-title small { color: #667085; }
+.repair-warning { color: #a35b00; font-size: 13px; }
+.repair-rule-inputs { display: grid; grid-template-columns: 1fr 1fr auto; align-items: center; gap: 12px; }
+.repair-check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 14px 0; }
+.repair-check input { accent-color: #456daa; width: 16px; height: 16px; }
+.repair-fallback { font-size: 13px; margin: 6px 0; }
+.repair-fallback summary { cursor: pointer; color: #456daa; margin-bottom: 10px; }
+.repair-enums { border-top: 1px solid var(--color-border-light); padding-top: 12px; margin-top: 12px; }
+.repair-enum-row { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.repair-enum-row > span { min-width: 80px; max-width: 200px; overflow-wrap: anywhere; }
+.repair-enum-row .input-field { flex: 1; min-width: 0; }
+.repair-deployment { margin: 20px 0; padding: 16px; background: #f5f7fa; border-radius: 8px; }
+.repair-deployment > select { width: 100%; }
+.repair-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.repair-job { margin-top: 20px; padding: 18px; border: 1px solid var(--color-border-light); border-radius: 8px; }
+.repair-job progress { width: 100%; height: 12px; margin-top: 14px; accent-color: #456daa; }
+.repair-modal .modal-footer { gap: 12px; flex-wrap: wrap; }
+.repair-modal .modal-footer .text-muted { flex: 1; font-size: 12px; }
+@media (max-width: 700px) { .repair-rule-inputs { grid-template-columns: 1fr; gap: 0; } .repair-steps { grid-template-columns: 1fr 1fr; padding: 10px; } .repair-modal { width: 98vw; } }

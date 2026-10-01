@@ -628,6 +628,32 @@ export function runMigrations(): void {
     console.log("Migration 010_insight_lookup_indexes applied.");
   }
 
+  if (!queryOne("SELECT name FROM _migrations WHERE name = '011_mapping_repairs'")) {
+    execRaw(`CREATE TABLE mapping_repairs (
+      profile_id TEXT PRIMARY KEY REFERENCES mapping_profiles(id),
+      fleet_id TEXT NOT NULL REFERENCES fleets(id),
+      connection_id TEXT NOT NULL REFERENCES oem_connections(id),
+      incident_id TEXT NOT NULL REFERENCES quarantine_incidents(id),
+      configuration TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      published_by TEXT,
+      published_at TEXT,
+      validation_report TEXT,
+      revision INTEGER NOT NULL DEFAULT 1
+    )`);
+    execRaw("CREATE INDEX idx_mapping_repairs_connection ON mapping_repairs(fleet_id, connection_id, published_at)");
+    execRaw(`UPDATE quarantine_records SET vehicle_id = (
+      SELECT vsm.vehicle_id FROM vehicle_source_mappings vsm JOIN vehicles v ON v.id = vsm.vehicle_id
+      WHERE vsm.connection_id = quarantine_records.connection_id AND vsm.oem_vehicle_id = (
+        SELECT source_vehicle_id FROM raw_events WHERE id = quarantine_records.raw_event_id
+      ) AND v.fleet_id = quarantine_records.fleet_id LIMIT 1
+    ) WHERE vehicle_id IS NULL`);
+    execRaw(`UPDATE quarantine_incidents SET
+      unresolved_event_count = (SELECT COUNT(DISTINCT raw_event_id) FROM quarantine_records WHERE incident_id = quarantine_incidents.id AND status != 'RESOLVED'),
+      affected_vehicle_count = (SELECT COUNT(DISTINCT vehicle_id) FROM quarantine_records WHERE incident_id = quarantine_incidents.id AND status != 'RESOLVED')`);
+    execRaw("INSERT INTO _migrations(name) VALUES ('011_mapping_repairs')");
+  }
+
   console.log("Migrations complete.");
 }
 

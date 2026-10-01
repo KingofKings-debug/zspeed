@@ -162,7 +162,10 @@ function parseStructureToContract(
 
 export function loadContractsForOem(oemId: string): FormatContract[] {
   const rows = query<any>(
-    "SELECT id, oem_id, format_version, event_type, expected_structure FROM oem_format_versions WHERE oem_id = ? ORDER BY format_version DESC",
+    `SELECT ofv.id, ofv.oem_id, ofv.format_version, ofv.event_type, ofv.expected_structure FROM oem_format_versions ofv
+     WHERE ofv.oem_id = ? AND NOT EXISTS (
+       SELECT 1 FROM mapping_profiles mp JOIN mapping_repairs mr ON mr.profile_id = mp.id WHERE mp.oem_format_version_id = ofv.id
+     ) ORDER BY ofv.format_version DESC`,
     [oemId]
   );
 

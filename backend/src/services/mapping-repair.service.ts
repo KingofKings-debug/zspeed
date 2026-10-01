@@ -1,0 +1,123 @@
+import { v4 as uuid } from "uuid";
+import { query, queryOne, run, transaction } from "../db/pool.js";
+import { AppError } from "../middleware/error.js";
+import { redactSensitive } from "./vault.service.js";
+import { markIncidentMappingReady } from "./quarantine.service.js";
+import { inspectFields, evaluateRepair, matchesRepairPayload, REPAIR_CONVERSIONS, type RepairConfiguration, type CanonicalSignal } from "./mapping-repair.engine.js";
+
+export function repairSignals(): CanonicalSignal[] { return query("SELECT * FROM canonical_signals ORDER BY name"); }
+export function repairIncident(fleetId: string, incidentId: string): any {
+  const incident = queryOne("SELECT qi.*, so.name AS oem_name FROM quarantine_incidents qi LEFT JOIN supported_oems so ON so.id = qi.oem_id WHERE qi.id = ? AND qi.fleet_id = ?", [incidentId, fleetId]);
+  if (!incident) throw new AppError(404, "NOT_FOUND", "Data issue not found");
+  if (!incident.connection_id) throw new AppError(400, "VALIDATION_ERROR", "This issue has no OEM connection to repair");
+  return incident;
+}
+function sampleRows(fleetId: string, incidentId: string, limit = 60): any[] {
+  // Oldest and newest examples expose mixed historical formats without loading the whole backlog.
+  const base = `SELECT DISTINCT re.* FROM raw_events re JOIN quarantine_records qr ON qr.raw_event_id = re.id WHERE qr.incident_id = ? AND re.fleet_id = ? AND re.processing_status = 'QUARANTINED'`;
+  const oldest = query(`${base} ORDER BY re.recorded_at, re.id LIMIT ?`, [incidentId, fleetId, Math.ceil(limit / 2)]);
+  const newest = query(`${base} ORDER BY re.recorded_at DESC, re.id DESC LIMIT ?`, [incidentId, fleetId, Math.floor(limit / 2)]);
+  return [...new Map([...oldest, ...newest].map(row => [row.id, row])).values()];
+}
+function parsePayload(payload: string): any { try { return JSON.parse(payload); } catch { return null; } }
+export function repairContext(fleetId: string, incidentId: string) {
+  const incident = repairIncident(fleetId, incidentId);
+  const rows = sampleRows(fleetId, incidentId);
+  const samples = rows.map(row => ({ id: row.id, recorded_at: row.recorded_at, source_vehicle_id: row.source_vehicle_id, payload: redactSensitive(parsePayload(row.payload)) }));
+  const paths = [...new Map(samples.flatMap(sample => inspectFields(sample.payload)).map(field => [field.path, field])).values()];
+  const existing = queryOne<any>(`SELECT mp.id, mp.mapping_version, mp.status, mr.configuration, mr.revision FROM mapping_repairs mr JOIN mapping_profiles mp ON mp.id = mr.profile_id WHERE mr.fleet_id = ? AND mr.incident_id = ? ORDER BY mp.rowid DESC LIMIT 1`, [fleetId, incidentId]);
+  const templates = query<any>(`SELECT mp.id, mp.mapping_version, ofv.format_version FROM mapping_profiles mp JOIN oem_format_versions ofv ON ofv.id = mp.oem_format_version_id WHERE ofv.oem_id = ? AND mp.status = 'ACTIVE' AND NOT EXISTS(SELECT 1 FROM mapping_repairs mr WHERE mr.profile_id = mp.id)`, [incident.oem_id]).map(profile => ({ ...profile, rules: query<any>("SELECT * FROM mapping_rules WHERE mapping_profile_id = ?", [profile.id]) }));
+  const count = queryOne<any>(`SELECT COUNT(DISTINCT re.id) AS total FROM raw_events re JOIN quarantine_records qr ON qr.raw_event_id = re.id WHERE qr.incident_id = ? AND re.fleet_id = ? AND re.processing_status = 'QUARANTINED'`, [incidentId, fleetId])?.total || 0;
+  const latestJob = queryOne<any>("SELECT * FROM replay_jobs WHERE fleet_id = ? AND incident_id = ? ORDER BY rowid DESC LIMIT 1", [fleetId, incidentId]);
+  return { incident, samples, paths: paths.filter(field => field.example !== "[REDACTED]"), signals: repairSignals(), templates, total: count, latestJob, existing: existing ? { ...existing, configuration: JSON.parse(existing.configuration) } : null };
+}
+const validPath = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 200 && !value.split(".").some(part => !part || ["__proto__", "prototype", "constructor"].includes(part) || redactSensitive({ [part]: "check" })[part] === "[REDACTED]");
+export function validateRepairConfiguration(input: any): RepairConfiguration {
+  if (!input || typeof input.name !== "string" || !input.name.trim() || input.name.length > 100) throw new AppError(400, "VALIDATION_ERROR", "Give this mapping a name (up to 100 characters)");
+  if (!["invalid_only", "matching", "replay_only"].includes(input.live_mode)) throw new AppError(400, "VALIDATION_ERROR", "Choose where the mapping will apply");
+  if (!Array.isArray(input.rules) || input.rules.length < 2 || input.rules.length > 50) throw new AppError(400, "VALIDATION_ERROR", "Map event time and at least one measurement");
+  const signals = repairSignals();
+  const seen = new Set<string>();
+  for (const rule of input.rules) {
+    if (!signals.some(signal => signal.id === rule.signal_id) || seen.has(rule.signal_id)) throw new AppError(400, "VALIDATION_ERROR", "Each destination measurement can be mapped once");
+    seen.add(rule.signal_id);
+    if (!Array.isArray(rule.sources) || rule.sources.length < 1 || rule.sources.length > 5 || !rule.sources.every(validPath)) throw new AppError(400, "VALIDATION_ERROR", "Select a source field; up to five fallback fields are supported");
+    if (!REPAIR_CONVERSIONS.includes(rule.conversion) || typeof rule.required !== "boolean") throw new AppError(400, "VALIDATION_ERROR", "Invalid conversion or missing-field setting");
+    if (rule.signal_id === "sig_event_time" && !rule.required) throw new AppError(400, "VALIDATION_ERROR", "Event time must be required");
+    if (rule.conversion === "ENUM_MAP" && (!rule.enum_map || typeof rule.enum_map !== "object" || Array.isArray(rule.enum_map) || Object.keys(rule.enum_map).length > 100 || Object.values(rule.enum_map).some(value => typeof value !== "string"))) throw new AppError(400, "VALIDATION_ERROR", "Provide a value mapping for each OEM code");
+    if (rule.conversion === "SCALE_OFFSET" && (!Number.isFinite(rule.scale) || !Number.isFinite(rule.offset))) throw new AppError(400, "VALIDATION_ERROR", "Scale and offset must be finite numbers");
+  }
+  if (!seen.has("sig_event_time")) throw new AppError(400, "VALIDATION_ERROR", "Map the originating event timestamp");
+  if (input.discriminator && (!validPath(input.discriminator.path) || typeof input.discriminator.value !== "string" || !input.discriminator.value || input.discriminator.value.length > 100)) throw new AppError(400, "VALIDATION_ERROR", "Select a format/version field and its expected value");
+  return { name: input.name.trim(), rules: input.rules, live_mode: input.live_mode, ...(input.discriminator ? { discriminator: input.discriminator } : {}) };
+}
+export function repairProfile(fleetId: string, id: string): any {
+  const row = queryOne<any>("SELECT mr.*, mp.status FROM mapping_repairs mr JOIN mapping_profiles mp ON mp.id = mr.profile_id WHERE mr.profile_id = ? AND mr.fleet_id = ?", [id, fleetId]);
+  if (!row) throw new AppError(404, "NOT_FOUND", "Mapping repair not found");
+  return { ...row, configuration: JSON.parse(row.configuration) as RepairConfiguration };
+}
+export function saveRepair(fleetId: string, incidentId: string, input: any, userId: string, profileId?: string, expectedRevision?: number) {
+  const incident = repairIncident(fleetId, incidentId);
+  const configuration = validateRepairConfiguration(input);
+  return transaction(() => {
+    if (profileId) {
+      const profile = repairProfile(fleetId, profileId);
+      if (profile.incident_id !== incidentId || profile.status !== "DRAFT") throw new AppError(409, "CONFLICT", "Published mappings are immutable; create a new version");
+      if (profile.revision !== expectedRevision) throw new AppError(409, "CONFLICT", "This draft changed in another session; reopen it before editing");
+      run("UPDATE mapping_repairs SET configuration = ?, validation_report = NULL, revision = revision + 1 WHERE profile_id = ?", [JSON.stringify(configuration), profileId]);
+      return { id: profileId, revision: profile.revision + 1 };
+    }
+    const id = uuid(); const formatId = uuid();
+    run("INSERT INTO oem_format_versions(id, oem_id, event_type, format_version, expected_structure) VALUES (?, ?, 'telemetry', ?, '{}')", [formatId, incident.oem_id, `repair_${id}`]);
+    run("INSERT INTO mapping_profiles(id, oem_format_version_id, mapping_version, canonical_schema_version, status) VALUES (?, ?, ?, '1.0', 'DRAFT')", [id, formatId, configuration.name]);
+    run("INSERT INTO mapping_repairs(profile_id, fleet_id, connection_id, incident_id, configuration, created_by) VALUES (?, ?, ?, ?, ?, ?)", [id, fleetId, incident.connection_id, incidentId, JSON.stringify(configuration), userId]);
+    return { id, revision: 1 };
+  });
+}
+export function testRepair(fleetId: string, id: string) {
+  const profile = repairProfile(fleetId, id);
+  const signals = repairSignals();
+  const rows = sampleRows(fleetId, profile.incident_id);
+  const results = rows.map(row => {
+    const result = evaluateRepair(profile.configuration, parsePayload(row.payload), signals);
+    const connection = queryOne<any>("SELECT status FROM oem_connections WHERE id = ?", [row.connection_id]);
+    if (connection?.status === "EXPIRED") result.errors.push("Reconnect the OEM account before recovery");
+    if (!queryOne("SELECT id FROM vehicle_source_mappings WHERE connection_id = ? AND oem_vehicle_id = ?", [row.connection_id, row.source_vehicle_id])) result.errors.push("Map this OEM vehicle in Connections before recovery");
+    const conflict = queryOne("SELECT id FROM quarantine_records WHERE raw_event_id = ? AND failure_category = 'IDEMPOTENCY_CONFLICT'", [row.id]);
+    if (conflict) result.errors.push("Conflicting event identity requires OEM investigation; a field mapping cannot resolve it");
+    result.success = result.errors.length === 0;
+    return { id: row.id, ...redactSensitive(result) };
+  });
+  const regressions = profile.configuration.live_mode === "matching" ? query<any>("SELECT re.id, re.payload, ne.canonical_values FROM raw_events re JOIN normalized_events ne ON ne.raw_event_id = re.id WHERE re.fleet_id = ? AND re.connection_id = ? AND re.processing_status = 'PROCESSED' ORDER BY re.recorded_at DESC LIMIT 20", [fleetId, profile.connection_id]).filter(row => matchesRepairPayload(profile.configuration, parsePayload(row.payload))).map(row => {
+    const result = evaluateRepair(profile.configuration, parsePayload(row.payload), signals);
+    const before = JSON.parse(row.canonical_values);
+    const changes = [...new Set([...Object.keys(before), ...Object.keys(result.normalized)])].filter(key => JSON.stringify(before[key]) !== JSON.stringify(result.normalized[key])).map(signal => ({ signal, before: before[signal] ?? null, after: result.normalized[signal] ?? null }));
+    return { id: row.id, success: result.success, errors: result.errors, changes };
+  }) : [];
+  const report = { revision: profile.revision, sampled: results.length, passed: results.filter(row => row.success).length, blocked: results.filter(row => !row.success).length, results, regression_checked: regressions.length, regression_failed: regressions.filter(result => !result.success).length, regression_changed: regressions.filter(result => result.changes.length).length, regressions };
+  if (profile.status === "DRAFT") run("UPDATE mapping_repairs SET validation_report = ? WHERE profile_id = ?", [JSON.stringify(report), id]);
+  return report;
+}
+export function publishRepair(fleetId: string, id: string, userId: string, revision: number) {
+  return transaction(() => {
+    const profile = repairProfile(fleetId, id);
+    if (profile.status !== "DRAFT" || profile.revision !== revision) throw new AppError(409, "CONFLICT", "The draft changed or was already published; test the current version");
+    const previous = profile.validation_report ? JSON.parse(profile.validation_report) : null;
+    if (!previous || previous.revision !== revision) throw new AppError(400, "VALIDATION_ERROR", "Test this draft before publishing");
+    const report = testRepair(fleetId, id);
+    if (!report.passed || report.regression_failed) throw new AppError(400, "VALIDATION_ERROR", "At least one quarantined example must pass and existing-format tests must not fail");
+    run("UPDATE mapping_profiles SET status = 'ACTIVE' WHERE id = ?", [id]);
+    run("UPDATE mapping_repairs SET published_by = ?, published_at = datetime('now') WHERE profile_id = ?", [userId, id]);
+    markIncidentMappingReady(profile.incident_id);
+    return { success: true, report };
+  });
+}
+export function findLiveRepair(fleetId: string, connectionId: string, payload: any, existingFormatValid: boolean): any {
+  const profiles = query<any>("SELECT mr.*, mp.status FROM mapping_repairs mr JOIN mapping_profiles mp ON mp.id = mr.profile_id WHERE mr.fleet_id = ? AND mr.connection_id = ? AND mp.status = 'ACTIVE' ORDER BY mr.published_at DESC, mr.rowid DESC", [fleetId, connectionId]);
+  for (const profile of profiles) {
+    const configuration: RepairConfiguration = JSON.parse(profile.configuration);
+    if (configuration.live_mode === "replay_only" || (configuration.live_mode === "invalid_only" && existingFormatValid)) continue;
+    if (matchesRepairPayload(configuration, payload)) return { ...profile, configuration };
+  }
+  return undefined;
+}

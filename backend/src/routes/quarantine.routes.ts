@@ -89,23 +89,17 @@ router.post("/incidents/:id/retry", (req, res, next) => {
       throw new AppError(404, "NOT_FOUND", "Incident not found");
     }
 
-    const oemFormat = queryOne<{ id: string }>(
-      "SELECT id FROM oem_format_versions WHERE oem_id = ? ORDER BY created_at DESC LIMIT 1",
-      [incident.oem_id]
+    const requestedProfile = typeof req.body?.mapping_profile_id === "string" ? req.body.mapping_profile_id : null;
+    const activeProfile = queryOne<{ id: string }>(
+      `SELECT mp.id FROM mapping_profiles mp
+       JOIN oem_format_versions ofv ON ofv.id = mp.oem_format_version_id
+       LEFT JOIN mapping_repairs mr ON mr.profile_id = mp.id
+       WHERE ofv.oem_id = ? AND mp.status = 'ACTIVE'
+       AND (mr.profile_id IS NULL OR (mr.fleet_id = ? AND mr.connection_id = ?))
+       AND (? IS NULL OR mp.id = ?)
+       ORDER BY mr.published_at DESC, ofv.created_at DESC, mp.rowid DESC LIMIT 1`,
+      [incident.oem_id, fleetId, incident.connection_id, requestedProfile, requestedProfile]
     );
-
-    let activeProfile: { id: string } | undefined = undefined;
-    if (req.body?.mapping_profile_id) {
-      activeProfile = queryOne<{ id: string }>(
-        "SELECT id FROM mapping_profiles WHERE id = ? AND status = 'ACTIVE'",
-        [req.body.mapping_profile_id]
-      );
-    } else if (oemFormat) {
-      activeProfile = queryOne<{ id: string }>(
-        "SELECT id FROM mapping_profiles WHERE oem_format_version_id = ? AND status = 'ACTIVE'",
-        [oemFormat.id]
-      );
-    }
 
     if (!activeProfile) {
       throw new AppError(400, "BAD_REQUEST", "No active published mapping profile found for this incident");

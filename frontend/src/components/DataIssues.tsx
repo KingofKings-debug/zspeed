@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
 import type { QuarantineIncident, QuarantineStatus, FailureCategory } from "../types";
+import MappingRepair from "./MappingRepair";
 
 interface Props {
   onViewVehicle?: (vehicleId: string) => void;
@@ -14,6 +15,10 @@ const CATEGORY_LABELS: Record<FailureCategory, string> = {
   INFRA_ERROR: "Infrastructure error",
   UNSUPPORTED_OEM: "Unsupported OEM",
   UNKNOWN_FORMAT: "Unknown format",
+  INVALID_COORDINATES: "Invalid GPS coordinates",
+  INVALID_TIME: "Invalid timestamp",
+  TYPE_ERROR: "Changed value type",
+  IDEMPOTENCY_CONFLICT: "Conflicting event identity",
 };
 
 const STATUS_CONFIG: Record<QuarantineStatus, { label: string; cls: string }> = {
@@ -133,18 +138,23 @@ function IncidentDetailPanel({
   incident,
   onClose,
   onViewVehicle,
+  onRepair,
 }: {
   incident: QuarantineIncident;
   onClose: () => void;
   onViewVehicle?: (id: string) => void;
+  onRepair: () => void;
 }) {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detailError, setDetailError] = useState("");
 
   useEffect(() => {
     setLoading(true);
+    setDetailError("");
     api.getIncidentVehicles(incident.id)
       .then((r) => setVehicles(r.vehicles || []))
+      .catch((error) => setDetailError(error.message))
       .finally(() => setLoading(false));
   }, [incident.id]);
 
@@ -157,6 +167,7 @@ function IncidentDetailPanel({
         </div>
         <div className="modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
           <div className="incident-detail-header">
+            {detailError && <div className="alert alert-error">Affected vehicles could not be loaded: {detailError}</div>}
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{incident.title}</h3>
             <div className="text-muted" style={{ fontSize: 13, marginBottom: 16 }}>
               {incident.description}
@@ -194,7 +205,7 @@ function IncidentDetailPanel({
             <div className="alert alert-warning" style={{ marginTop: 16 }}>
               <span>📋</span>
               <div>
-                The OEM has changed its data format. A platform administrator needs to create and publish an updated mapping before data can resume. Raw events are safely preserved for replay.
+                The OEM has changed its data format. Use the mapping workbench to inspect examples, test updated fields, and recover valid saved events.
               </div>
             </div>
           )}
@@ -261,6 +272,7 @@ function IncidentDetailPanel({
           </div>
         </div>
         <div className="modal-footer">
+          {incident.connection_id && incident.status !== "RESOLVED" && <button className="btn btn-primary" onClick={onRepair}>Repair mapping & recover events</button>}
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
         </div>
       </div>
@@ -274,6 +286,7 @@ export default function DataIssues({ onViewVehicle }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("UNRESOLVED");
   const [selectedIncident, setSelectedIncident] = useState<QuarantineIncident | null>(null);
+  const [repairIncidentId, setRepairIncidentId] = useState<string | null>(null);
   const [summary, setSummary] = useState<any>(null);
 
   const loadIncidents = useCallback(() => {
@@ -324,6 +337,7 @@ export default function DataIssues({ onViewVehicle }: Props) {
         <div>
           <div className="section-title">Data Issues</div>
           <div className="section-subtitle">Data quality issues affecting vehicle projections</div>
+          <p className="text-muted">Open an issue to inspect OEM examples and repair changed fields before recovering historical data.</p>
         </div>
       </div>
 
@@ -379,7 +393,9 @@ export default function DataIssues({ onViewVehicle }: Props) {
           <div className="empty-state">
             <div className="empty-state-title">No issues found</div>
             <div className="empty-state-text">
-              {statusFilter === "UNRESOLVED"
+              {(summary?.total_unresolved_events || 0) > 0
+                ? "Issues remain in another status. Choose All statuses to see mappings awaiting recovery or events that are still blocked."
+                : statusFilter === "UNRESOLVED"
                 ? "All data is flowing correctly."
                 : "No issues match this filter."}
             </div>
@@ -422,8 +438,10 @@ export default function DataIssues({ onViewVehicle }: Props) {
           incident={selectedIncident}
           onClose={() => setSelectedIncident(null)}
           onViewVehicle={onViewVehicle}
+          onRepair={() => { setRepairIncidentId(selectedIncident.id); setSelectedIncident(null); }}
         />
       )}
+      {repairIncidentId && <MappingRepair incidentId={repairIncidentId} onClose={() => { setRepairIncidentId(null); loadIncidents(); }} onComplete={loadIncidents} />}
     </div>
   );
 }

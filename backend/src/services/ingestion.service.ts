@@ -20,6 +20,8 @@ import {
   computeDataFreshness,
 } from "./vehicle-state.service.js";
 import { recalculateFleetInsights } from "./insight.service.js";
+import { findLiveRepair, repairSignals } from "./mapping-repair.service.js";
+import { evaluateRepair } from "./mapping-repair.engine.js";
 
 function safeJson(val: any, fallback: any): any {
   if (!val) return fallback;
@@ -186,6 +188,30 @@ export function processRawEvent(
 
   const formatResult = detectAndValidateFormat(connectionRow.oem_id, payloadObj);
 
+  const forcedRepair = forcedMappingProfileId ? queryOne<any>("SELECT mr.*, mp.status FROM mapping_repairs mr JOIN mapping_profiles mp ON mp.id = mr.profile_id WHERE mr.profile_id = ?", [forcedMappingProfileId]) : undefined;
+  const repair = forcedRepair ? { ...forcedRepair, configuration: JSON.parse(forcedRepair.configuration) }
+    : !forcedMappingProfileId ? findLiveRepair(rawEvent.fleet_id, rawEvent.connection_id, payloadObj, formatResult.valid) : undefined;
+  let repairValues: Record<string, any> | undefined;
+  let repairWarnings: string[] = [];
+  let profile: { id: string; canonical_schema_version: string } | undefined;
+  if (repair) {
+    if (repair.fleet_id !== rawEvent.fleet_id || repair.connection_id !== rawEvent.connection_id || repair.status !== "ACTIVE") {
+      return { status: "QUARANTINED", eventId: rawEventId, message: "Mapping repair is not published for this connection" };
+    }
+    if (queryOne("SELECT id FROM quarantine_records WHERE raw_event_id = ? AND failure_category = 'IDEMPOTENCY_CONFLICT'", [rawEventId])) {
+      return { status: "QUARANTINED", eventId: rawEventId, message: "Conflicting source event identity requires OEM investigation" };
+    }
+    const result = evaluateRepair(repair.configuration, payloadObj, repairSignals());
+    if (!result.success) {
+      const reason = result.errors.join("; ");
+      quarantineEvent(rawEventId, rawEvent, connectionRow.oem_id, reason, "INVALID_VALUE", undefined, undefined, undefined, repair.profile_id, replayJobId);
+      return { status: "QUARANTINED", eventId: rawEventId, message: reason };
+    }
+    repairValues = result.normalized;
+    repairWarnings = result.warnings.map(warning => `MISSING_OPTIONAL: ${warning}`);
+    profile = { id: repair.profile_id, canonical_schema_version: "1.0" };
+  } else {
+
   if (!formatResult.valid) {
     const category = formatResult.failureCategory || "SCHEMA_CHANGE";
     const reason = formatResult.errorReason || "Format contract validation failed";
@@ -202,8 +228,6 @@ export function processRawEvent(
   }
 
   const detectedVersion = formatResult.detectedVersion!;
-
-  let profile: { id: string; canonical_schema_version: string } | undefined = undefined;
 
   if (forcedMappingProfileId) {
     const forcedProfile = queryOne<{ id: string; oem_format_version_id: string; canonical_schema_version: string; status: string }>(
@@ -252,6 +276,8 @@ export function processRawEvent(
     }
   }
 
+  }
+
   const mappingRow = queryOne<{ id: string }>(
     "SELECT id FROM vehicle_source_mappings WHERE connection_id = ? AND oem_vehicle_id = ?",
     [rawEvent.connection_id, rawEvent.source_vehicle_id]
@@ -270,13 +296,13 @@ export function processRawEvent(
 
   const vehicleId = vehicleRow ? vehicleRow.vehicle_id : null;
 
-  const rules = query<any>(
+  const rules = repairValues ? [] : query<any>(
     "SELECT mr.*, cs.name as signal_name, cs.data_type, cs.valid_range_min, cs.valid_range_max FROM mapping_rules mr JOIN canonical_signals cs ON mr.destination_signal_id = cs.id WHERE mr.mapping_profile_id = ?",
     [profile.id]
   );
 
-  const normalized: Record<string, any> = {};
-  const qualityFlags: string[] = [];
+  const normalized: Record<string, any> = repairValues || {};
+  const qualityFlags: string[] = repairWarnings;
   let hasError = false;
   let errorReason = "";
   let errorCategory = "INVALID_VALUE";
@@ -579,12 +605,16 @@ function quarantineEvent(
 
   if (!oemId) return;
 
-  createQuarantineRecord({
+  const existingRecord = findQuarantineRecordByRawEvent(rawEventId);
+  const affectedVehicleId = vehicleId || queryOne<{ vehicle_id: string }>("SELECT vsm.vehicle_id FROM vehicle_source_mappings vsm JOIN vehicles v ON v.id = vsm.vehicle_id WHERE vsm.connection_id = ? AND vsm.oem_vehicle_id = ? AND v.fleet_id = ?", [rawEvent.connection_id, rawEvent.source_vehicle_id, rawEvent.fleet_id])?.vehicle_id;
+  if (existingRecord && existingRecord.status !== "RESOLVED") {
+    run("UPDATE quarantine_records SET failure_detail = ?, vehicle_id = COALESCE(vehicle_id, ?), latest_attempt_at = datetime('now') WHERE id = ?", [reason, affectedVehicleId || null, existingRecord.id]);
+  } else createQuarantineRecord({
     rawEventId,
     fleetId: rawEvent.fleet_id,
     connectionId: rawEvent.connection_id,
     oemId,
-    vehicleId: vehicleId || null,
+    vehicleId: affectedVehicleId || null,
     failureReason: reason,
     category: category as any,
     expectedFormat,
@@ -592,11 +622,11 @@ function quarantineEvent(
   });
 
   const qSummary = queryOne<any>(
-    "SELECT COUNT(*) as count FROM quarantine_records WHERE fleet_id = ? AND status = 'UNRESOLVED'",
+    "SELECT COUNT(DISTINCT raw_event_id) as count FROM quarantine_records WHERE fleet_id = ? AND status != 'RESOLVED'",
     [rawEvent.fleet_id]
   );
   const qVehicles = queryOne<any>(
-    "SELECT COUNT(DISTINCT vehicle_id) as count FROM quarantine_records WHERE fleet_id = ? AND status = 'UNRESOLVED'",
+    "SELECT COUNT(DISTINCT vehicle_id) as count FROM quarantine_records WHERE fleet_id = ? AND status != 'RESOLVED'",
     [rawEvent.fleet_id]
   );
 
@@ -662,6 +692,11 @@ export function previewMapping(
   profileId: string,
   samplePayload: any
 ): { success: boolean; normalized?: Record<string, any>; error?: string } {
+  const repair = queryOne<any>("SELECT configuration FROM mapping_repairs WHERE profile_id = ?", [profileId]);
+  if (repair) {
+    const result = evaluateRepair(JSON.parse(repair.configuration), samplePayload, repairSignals());
+    return { success: result.success, normalized: result.normalized, ...(result.success ? {} : { error: result.errors.join("; ") }) };
+  }
   const profile = queryOne<{ id: string; canonical_schema_version: string }>(
     "SELECT id, canonical_schema_version FROM mapping_profiles WHERE id = ?",
     [profileId]

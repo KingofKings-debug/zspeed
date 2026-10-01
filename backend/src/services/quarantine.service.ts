@@ -204,10 +204,10 @@ function determineStaleProjections(category: FailureCategory): string[] {
 function updateIncidentCounts(incidentId: string): void {
   const counts = queryOne<{ unresolved: number; vehicles: number }>(
     `SELECT
-       COUNT(*) as unresolved,
+       COUNT(DISTINCT raw_event_id) as unresolved,
        COUNT(DISTINCT CASE WHEN vehicle_id IS NOT NULL THEN vehicle_id END) as vehicles
      FROM quarantine_records
-     WHERE incident_id = ? AND status = 'UNRESOLVED'`,
+     WHERE incident_id = ? AND status != 'RESOLVED'`,
     [incidentId]
   );
 

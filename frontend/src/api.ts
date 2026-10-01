@@ -98,6 +98,13 @@ export async function authedFetch(url: string, options?: RequestInit): Promise<R
 }
 
 export const api = {
+  getRepairContext: (id: string) => request<any>(`/ingestion/repair/incidents/${id}`),
+  saveMappingRepair: (id: string, configuration: any, profile_id?: string, revision?: number) => request<{ id: string; revision: number }>(`/ingestion/repair/incidents/${id}/draft`, { method: "POST", body: JSON.stringify({ configuration, profile_id, revision }) }),
+  testMappingRepair: (id: string) => request<any>(`/ingestion/repair/${id}/test`, { method: "POST" }),
+  publishMappingRepair: (id: string, revision: number) => request<any>(`/ingestion/repair/${id}/publish`, { method: "POST", body: JSON.stringify({ revision }) }),
+  replayMappingRepair: (id: string) => request<{ jobId: string }>(`/ingestion/repair/${id}/replay`, { method: "POST" }),
+  disableMappingRepair: (id: string) => request<any>(`/ingestion/repair/${id}/disable`, { method: "POST" }),
+  getReplayJob: (id: string) => request<any>(`/ingestion/replay/${id}`),
   getStats: () =>
     request<{ total: number; receiving: number; no_connection: number; attention: number }>("/vehicles/stats"),
 

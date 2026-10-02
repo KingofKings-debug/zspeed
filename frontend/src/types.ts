@@ -257,6 +257,9 @@ export interface VehicleDetail {
   latestTrip: Trip | null;
   unresolvedQuarantineCount: number;
   dataQuality?: { validEvents: number; quarantinedEvents: number; unresolvedEvents: number };
+  freshness?: {updatedAt:string;revision:number;source:string;eventualConsistency:boolean};
+  healthTags?: string[];
+  stats?: {trips:number;distanceKm:number;durationSeconds:number};
 }
 
 export interface TripQuality {

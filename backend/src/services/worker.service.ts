@@ -20,14 +20,15 @@ export function stopWorker(): void {
   }
 }
 
-export function claimNextJob(workerId: string = "worker-1"): any | null {
+export function claimNextJob(workerId: string = "worker-1", allowMaintenance=true): any | null {
   return transaction(() => {
     const job = queryOne<any>(
       `SELECT * FROM job_queue
        WHERE status = 'PENDING'
          AND (run_after IS NULL OR run_after <= datetime('now'))
-       ORDER BY priority ASC, created_at ASC
-       LIMIT 1`
+         AND (?=1 OR job_type NOT IN ('REPLAY_JOB','REBUILD_PROJECTIONS_JOB') OR created_at<=datetime('now','-10 minutes'))
+       ORDER BY CASE WHEN job_type IN ('REPLAY_JOB','REBUILD_PROJECTIONS_JOB') AND created_at<=datetime('now','-10 minutes') THEN 0 ELSE priority END ASC, created_at ASC
+       LIMIT 1`, [allowMaintenance ? 1 : 0]
     );
 
     if (!job) return null;
@@ -99,10 +100,13 @@ export function executeClaimedJob(job: any): void {
         handleRebuildProjectionJob(payload);
         break;
       case "REPLAY_JOB":
-        handleReplayJob(payload);
+        if (!handleReplayJob(payload)) {
+          run("UPDATE job_queue SET status='PENDING',worker_id=NULL,attempts=MAX(0,attempts-1),run_after=datetime('now','+1 seconds') WHERE id=?",[job.id]);
+          return;
+        }
         break;
       default:
-        console.warn("Unknown job type:", job.job_type);
+        throw new Error(`Unknown job type: ${job.job_type}`);
     }
 
     run(
@@ -131,11 +135,13 @@ export function executeClaimedJob(job: any): void {
   }
 }
 
-export function processBatch(workerId: string = "worker-default"): number {
+export function processBatch(workerId: string = "worker-default", maxJobs=MAX_JOBS_PER_CYCLE, allowMaintenance=true): number {
   recoverAbandonedJobs(30);
   let processedCount = 0;
-  for (let i = 0; i < MAX_JOBS_PER_CYCLE; i++) {
-    const job = claimNextJob(workerId);
+  const cycleStarted=Date.now();
+  for (let i = 0; i < maxJobs; i++) {
+    if(i>0 && Date.now()-cycleStarted>200) break;
+    const job = claimNextJob(workerId,allowMaintenance);
     if (!job) break;
     executeClaimedJob(job);
     processedCount++;
@@ -176,6 +182,8 @@ function handleRebuildProjectionJob(payload: any): void {
   const { jobId } = payload;
   if (!jobId) return;
   runProjectionRebuildJob(jobId);
+  const result=queryOne<any>('SELECT status,error_message FROM projection_rebuild_jobs WHERE id=?',[jobId]);
+  if(result?.status==='FAILED') throw new Error(result.error_message || 'Projection rebuild failed');
   const job = queryOne<{ fleet_id: string }>("SELECT fleet_id FROM projection_rebuild_jobs WHERE id = ?", [jobId]);
   if (job?.fleet_id) {
     try {
@@ -184,10 +192,13 @@ function handleRebuildProjectionJob(payload: any): void {
   }
 }
 
-function handleReplayJob(payload: any): void {
+function handleReplayJob(payload: any): boolean {
   const { jobId, mappingProfileId } = payload;
-  if (!jobId || !mappingProfileId) return;
-  runReplayJob(jobId, mappingProfileId);
+  if (!jobId || !mappingProfileId) throw new Error('Replay job requires a job and mapping profile');
+  runReplayJob(jobId, mappingProfileId,25);
+  const result=queryOne<any>('SELECT status,error_message FROM replay_jobs WHERE id=?',[jobId]);
+  if(result?.status==='FAILED') throw new Error(result.error_message || 'Replay failed');
+  return result?.status==='COMPLETED';
 }
 
 export function drainWorker(): void {

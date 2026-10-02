@@ -496,6 +496,7 @@ export function enqueueProjectionRebuild(
   reason: string
 ): string {
   const jobId = uuid();
+  transaction(() => {
   run(
     `INSERT INTO projection_rebuild_jobs
        (id, vehicle_id, fleet_id, from_time, to_time, reason, status)
@@ -509,6 +510,9 @@ export function enqueueProjectionRebuild(
       reason,
     ]
   );
+  run(`INSERT INTO job_queue(id,job_type,payload,status,priority,attempts,max_attempts)
+    VALUES(?,'REBUILD_PROJECTIONS_JOB',?,'PENDING',10,0,3)`,[uuid(),JSON.stringify({jobId,vehicleId,fleetId})]);
+  });
   return jobId;
 }
 
@@ -654,7 +658,7 @@ export function getVehicleCurrentDetail(vehicleId: string): any {
   );
 
   const quarantineCount = queryOne<{ count: number }>(
-    `SELECT COUNT(*) as count FROM quarantine_records WHERE vehicle_id = ? AND status = 'UNRESOLVED'`,
+    `SELECT COUNT(DISTINCT raw_event_id) as count FROM quarantine_records WHERE vehicle_id = ? AND status != 'RESOLVED'`,
     [vehicleId]
   );
 

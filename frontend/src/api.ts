@@ -21,7 +21,7 @@ function authHeaders(): Record<string, string> {
   return {};
 }
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
+async function request<T>(url: string, options?: RequestInit, snapshotRetries=0): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${url}`, {
@@ -44,6 +44,12 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     throw new ApiError(403, "forbidden", "You do not have permission to perform this action.");
   }
   if (res.status === 404) {
+    const body=await res.json().catch(()=>({}));
+    if(body.code==='READ_MODEL_PENDING' && snapshotRetries<10) {
+      await new Promise(resolve=>setTimeout(resolve,1500));
+      return request<T>(url,options,snapshotRetries+1);
+    }
+    if(body.code==='READ_MODEL_PENDING') throw new ApiError(404,'not_found',body.message);
     throw new ApiError(404, "not_found", "The requested resource was not found.");
   }
   if (res.status >= 500) {
@@ -221,13 +227,16 @@ export const api = {
   getQuarantineSummary: () => request<any>("/quarantine/summary"),
 
   getVehicleDetail: (vehicleId: string) => request<any>(`/vehicles/${vehicleId}/detail`),
+  getBackendJobs: () => request<any>('/backend-jobs'),
+  getTripBundle: (vehicleId: string, tripId: string) => request<any>(`/vehicles/${vehicleId}/trips/${tripId}/bundle`),
 
-  getVehicleTrips: (vehicleId: string, from?: string, to?: string) => {
+  getVehicleTrips: (vehicleId: string, from?: string, to?: string, offset=0) => {
     const params = new URLSearchParams();
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    if(offset) params.set('offset',String(offset));
     const q = params.toString();
-    return request<{ trips: any[] }>(`/vehicles/${vehicleId}/trips${q ? "?" + q : ""}`);
+    return request<{ trips: any[];hasMore?:boolean;nextOffset?:number|null }>(`/vehicles/${vehicleId}/trips${q ? "?" + q : ""}`);
   },
 
   getTripRoute: (vehicleId: string, tripId: string) =>

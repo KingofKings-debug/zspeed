@@ -11,6 +11,7 @@ import { ingestEvent, replayEvents, runReplayJob } from "../services/ingestion.s
 import { loadContractsForOem } from "../services/format-contract.service.js";
 import { repairContext, saveRepair, testRepair, publishRepair, repairSignals } from "../services/mapping-repair.service.js";
 import { evaluateRepair, type RepairConfiguration } from "../services/mapping-repair.engine.js";
+import { setReading, removeReading } from '../../../frontend/src/repair-plan';
 
 const fleet = "fleet-repair-test", connection = "connection-repair-test", vehicle = "vehicle-repair-test", source = "OEM-REPAIR-1";
 let dbPath: string;
@@ -41,6 +42,44 @@ beforeEach(() => {
 afterEach(() => { closeDb(); for (const suffix of ["", "-wal", "-shm"]) { try { fs.unlinkSync(dbPath + suffix); } catch {} } });
 
 describe("Guided, connection-scoped mapping repairs", () => {
+  it('uses the last accepted connection mapping as the before side of a repair', () => {
+    const accepted = addEvent({timestamp:'2026-10-01T09:00:00Z', speed_mph:40, charge_fraction:.7, lat:0, lon:0},'accepted-old-format');
+    expect(accepted.status).toBe('PROCESSED');
+    const event = addEvent();const context = repairContext(fleet,incidentFor(event.eventId));
+    expect(context.baseline?.profile_id).toBe('prof_voltera_v1');
+    expect(context.baseline?.rules.find((rule:any)=>rule.signal_id==='sig_speed')?.sources).toEqual(['speed_mph']);
+    expect(context.baseline?.sample.speed_mph).toBe(40);
+  });
+  it('recovers events using the field, units, added and removed reading actions', () => {
+    const event = addEvent(payload({telemetry:{new_velocity:'45',battery:'0.75',latitude:0,longitude:0,ignition:'running',direction:90},firmware:'v4'}));
+    let config = {...configuration(), rules:[...configuration().rules,{signal_id:'sig_odometer',sources:['old_odometer'],conversion:'DIRECT',required:false}]} as any;
+    config=setReading(config,'sig_speed','telemetry.new_velocity',45);
+    config={...config,rules:config.rules.map((rule:any)=>rule.signal_id==='sig_speed'?{...rule,conversion:'DIRECT'}:rule)};
+    config=removeReading(config,config.rules.find((rule:any)=>rule.signal_id==='sig_odometer'));
+    config=setReading(config,'sig_heading','telemetry.direction',90);
+    config.field_decisions={...config.field_decisions,firmware:'IGNORE'};
+    const incident=incidentFor(event.eventId);const draft=saveRepair(fleet,incident,config,'operator');
+    expect(repairContext(fleet,incident).existing?.configuration.field_decisions).toEqual({old_odometer:'REMOVED',firmware:'IGNORE'});
+    const report=testRepair(fleet,draft.id);expect(report.passed).toBe(1);
+    expect(report.results[0].normalized).toMatchObject({vehicle_speed:45,battery_soc:75,heading:90});
+    publishRepair(fleet,draft.id,'operator',draft.revision);
+    const replay=replayEvents(draft.id,{fleet_id:fleet,incident_id:incident});runReplayJob(replay.jobId,draft.id);
+    expect(queryOne<any>('SELECT processing_status,payload FROM raw_events WHERE id = ?',[event.eventId])).toMatchObject({processing_status:'PROCESSED'});
+    expect(queryOne<any>('SELECT payload FROM raw_events WHERE id = ?',[event.eventId])!.payload).toContain('firmware');
+    expect(queryOne<any>('SELECT status FROM quarantine_incidents WHERE id = ?',[incident])!.status).toBe('RESOLVED');
+  });
+  it('rejects an unused-field decision that also maps the same field', () => {
+    const event=addEvent();
+    expect(()=>saveRepair(fleet,incidentFor(event.eventId),{...configuration(),field_decisions:{'telemetry.velocity':'IGNORE'}},'operator')).toThrow('not both');
+    expect(()=>saveRepair(fleet,incidentFor(event.eventId),{...configuration(),field_decisions:{password:'IGNORE'}},'operator')).toThrow('not both');
+  });
+  it('identifies the failed measurement so the matching repair window can open directly', () => {
+    const event=addEvent();const incident=incidentFor(event.eventId);
+    run("UPDATE quarantine_records SET failure_detail = 'battery_soc: Value above maximum' WHERE raw_event_id = ?",[event.eventId]);
+    expect(repairContext(fleet,incident).affected_signals).toEqual([{id:'sig_soc',name:'battery_soc',data_type:'NUMBER'}]);
+    run("UPDATE quarantine_records SET failure_detail = 'ignition_status: Unrecognized code' WHERE raw_event_id = ?",[event.eventId]);
+    expect(repairContext(fleet,incident).affected_signals).toEqual([{id:'sig_ignition',name:'ignition_status',data_type:'STRING'}]);
+  });
   it("keeps original data and global formats intact through inspect, test, publish and historical replay", () => {
     const event = addEvent(); expect(event.status).toBe("QUARANTINED");
     const incident = incidentFor(event.eventId);
@@ -151,8 +190,36 @@ describe("Guided, connection-scoped mapping repairs", () => {
     const conflict = addEvent(payload({ sequence: 99 }), 'event-changed');
     const draft = saveRepair(fleet, incidentFor(conflict.eventId), configuration(), 'operator');
     const report = testRepair(fleet, draft.id);
-    expect(report.passed).toBe(0); expect(report.results[0].errors.join()).toContain('Conflicting event identity');
+    expect(report.passed).toBe(0); expect(report.results[0].errors.join()).toContain('record number was sent with different readings');
+    const context = repairContext(fleet, incidentFor(conflict.eventId));
+    expect(context.nextAction).toBe('provider');
+    expect(context.conflicts[0]).toMatchObject({ reference: 'event-changed', vehicle: source, differences: [{ field: 'sequence', saved: null, incoming: 99 }] });
     expect(() => publishRepair(fleet, draft.id, 'operator', draft.revision)).toThrow('At least one');
+  });
+  it('shows only safe changed readings in a provider correction request', () => {
+    addEvent(payload({ password: 'first-secret' }));
+    const conflict = addEvent(payload({ password: 'second-secret', telemetry: { velocity: '60' } }), 'event-changed');
+    const context = repairContext(fleet, incidentFor(conflict.eventId));
+    expect(JSON.stringify(context.conflicts)).not.toContain('secret');
+    expect(context.conflicts[0].differences).toContainEqual({field:'telemetry.velocity', saved:'45', incoming:'60'});
+    expect(() => repairContext('another-fleet', incidentFor(conflict.eventId))).toThrow('not found');
+  });
+  it('routes account and vehicle problems to Connections before editing readings', () => {
+    const event = addEvent(); const incident = incidentFor(event.eventId);
+    run("UPDATE oem_connections SET status = 'EXPIRED' WHERE id = ?", [connection]);
+    expect(repairContext(fleet, incident).nextAction).toBe('reconnect');
+    const draft = saveRepair(fleet, incident, configuration(), 'operator');
+    expect(testRepair(fleet, draft.id).results[0].nextAction).toBe('reconnect');
+    run("UPDATE oem_connections SET status = 'ACTIVE' WHERE id = ?", [connection]);
+    run("DELETE FROM vehicle_source_mappings WHERE connection_id = ?", [connection]);
+    run("UPDATE quarantine_incidents SET failure_category = 'MISSING_VEHICLE_MAPPING' WHERE id = ?", [incident]);
+    expect(repairContext(fleet, incident).nextAction).toBe('vehicle');
+    expect(testRepair(fleet, draft.id).results[0].nextAction).toBe('vehicle');
+  });
+  it('requests a corrected record for malformed data without offering field matching', () => {
+    const event = addEvent(); const incident = incidentFor(event.eventId);
+    run("UPDATE raw_events SET payload = 'broken JSON' WHERE id = ?", [event.eventId]);
+    expect(repairContext(fleet, incident).nextAction).toBe('provider');
   });
   it("redacts credentials in examples and rejects credential source paths", () => {
     const event = addEvent(payload({ password: 'not-for-the-browser' }));

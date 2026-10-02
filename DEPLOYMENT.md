@@ -78,3 +78,37 @@ For AWS startup failures, inspect CloudFormation stack events and `/var/log/zspe
 To stop AWS charges, delete the CloudFormation stack. The database disk is deliberately retained (`DeleteOnTermination: false`); recover/back up needed data, then delete that detached EBS volume and the deployment bucket/objects yourself. These retained resources continue to incur storage charges.
 
 References: [Caddy routing and HTTPS patterns](https://caddyserver.com/docs/caddyfile/patterns), [AWS application deployment with CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/deploying.applications.html).
+
+## Read snapshots, replica, cache and background jobs
+
+The backend starts and supervises a separate worker process automatically; there is no extra manual startup step. The durable queue lives in the operational database. Changes enqueue refresh requests in the same transaction, and repeated requests for a vehicle or trip are combined. Existing events remain unchanged. Historical recovery persists individual outcomes and yields after 25 events, so it resumes after a worker restart.
+
+Docker adds an internal Redis service with a 128 MB memory limit and five-second cached snapshot expiry. Redis has no exposed host port and is disposable; an unavailable cache falls back to the read replica. The API bounds cache waits to 80 milliseconds and temporarily bypasses an unresponsive cache. Redis failure does not prevent the backend starting.
+
+The backend data volume contains three separate database files: `zspeed.db` (operational), `vehicle-reads.db` (saved vehicle and trip snapshots), and `vehicle-replica.db` (asynchronous read replica). Vehicle detail, trip lists, maps, important trip events and quality reads use the replica. A selected trip loads through one `/api/vehicles/:vehicleId/trips/:tripId/bundle` request. Trip lists are paginated in groups of 50; older trips remain accessible. Fleet overview, connection management, live event catch-up and write APIs continue using their existing paths.
+
+First startup prepares existing vehicles and trips gradually. Vehicle pages retry while their first snapshot is being built. Once available, the previous completed snapshot remains readable while updates are queued. The Backend Jobs tab displays fleet-scoped queue activity, retry counts, recovery progress, worker heartbeat, replication backlog and cache availability. Snapshot timestamps indicate freshness; eventual consistency means a newly received event need not appear immediately. New vehicle summaries have reserved refresh capacity, and continuously arriving changes cannot indefinitely postpone a refresh.
+
+Optional development settings in the root `.env`:
+
+```dotenv
+# Redis is optional locally; Docker supplies its own internal URL.
+REDIS_URL=redis://127.0.0.1:6379
+READ_MODEL_PATH=./data/vehicle-reads.db
+READ_REPLICA_PATH=./data/vehicle-replica.db
+MAINTENANCE_TIMEZONE=Asia/Kolkata
+MAINTENANCE_START_HOUR=0
+MAINTENANCE_END_HOUR=6
+```
+
+Paths are relative to the backend working directory. Without overrides the read databases are created beside the operational database. During busy periods the worker reserves capacity for incoming events and slows historical maintenance; quiet hours increase batch capacity. Maintenance waiting longer than ten minutes becomes eligible even under sustained traffic. Each cycle yields between jobs and limits its batch time, but an individual trip rebuild cannot be interrupted halfway through its transaction. Invalid timezone configuration must be corrected if the worker reports repeated scheduling errors.
+
+This is a durable queue architecture, without a Kafka dependency. The replica is a separate database copy of the materialized read data on the same server. It reduces operational query load and isolates saved reads from operational writes; it does **not** provide cross-server failover or remove SQLite's single-writer limit. Run one backend per operational database. Stop the old backend before starting its replacement. Do not put SQLite WAL files on a network filesystem. At a scale requiring multiple writers or host failover, migrate the operational store to a server database and an external broker.
+
+Back up `zspeed.db` using SQLite's backup mechanism together with configuration/secrets. The read model and replica can be regenerated from retained operational data, but preserve both for faster restoration. Do not manually copy a live SQLite database without its WAL or a consistent backup. Worker restarts recover queued work; failures remain visible and retry with backoff.
+
+Design references: [SQLite WAL concurrency](https://sqlite.org/wal.html), [Redis production client behavior](https://redis.io/docs/latest/develop/clients/nodejs/produsage/).
+
+Verification: run `npm test` in `backend` for the regression and read-scaling tests. With Docker running, set `RUN_DOCKER_TESTS=1` and run `npm test -- src/tests/redis-container.test.ts` to verify cache hits, real Redis expiry and fallback after stopping its isolated test container. The normal suite skips this optional container test.
+
+The Background Jobs screen displays logical activities rather than individual event tasks. Vehicle event processing and trip calculations share one stable job ID while new work continues to arrive within five minutes. Recovery and manual rebuilds keep separate IDs. Each activity includes the vehicle, purpose, first start time, latest activity, status, totals and progress. The Data Pipeline screen updates existing results in place, coalesces repeated notifications and preserves visible results if a refresh fails.

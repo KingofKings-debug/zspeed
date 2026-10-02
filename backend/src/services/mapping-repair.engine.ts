@@ -15,6 +15,7 @@ export interface RepairConfiguration {
   rules: RepairRule[];
   live_mode: "invalid_only" | "matching" | "replay_only";
   discriminator?: { path: string; value: string };
+  field_decisions?: Record<string, 'IGNORE' | 'REMOVED'>;
 }
 export interface CanonicalSignal { id: string; name: string; data_type: string; unit: string | null; description: string; valid_range_min: number | null; valid_range_max: number | null }
 export interface RepairResult { success: boolean; normalized: Record<string, any>; errors: string[]; warnings: string[]; fields: { signal: string; source: string | null; raw: any; value: any; status: string }[] }

@@ -8,13 +8,14 @@ import RequestIntegration from "./components/RequestIntegration";
 import Pipeline from "./components/Pipeline";
 import DataIssues from "./components/DataIssues";
 import VehicleDetail from "./components/VehicleDetail";
+import BackendJobs from './components/BackendJobs';
 import LoginScreen from "./components/LoginScreen";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { useConnectionStatus, vehicleStore } from "./store/vehicleStore";
 import { getSession, subscribeSession, logout, type SessionState } from "./session";
 import { setAuthenticatedFleet, disconnectFleetSocket } from "./socket";
 
-type View = "overview" | "vehicles" | "connections" | "pipeline" | "issues" | "vehicle-detail";
+type View = "overview" | "vehicles" | "connections" | "pipeline" | "issues" | "vehicle-detail" | "jobs";
 
 export default function App() {
   const [session, setSession] = useState<SessionState | null>(() => getSession());
@@ -156,6 +157,7 @@ export default function App() {
             <button className={view === "pipeline" ? "active" : ""} onClick={() => setView("pipeline")}>
               Data Pipeline
             </button>
+            <button className={view==='jobs'?'active':''} onClick={()=>setView('jobs')}>Background Jobs</button>
             <button className="btn btn-ghost btn-sm" onClick={handleLogout} style={{ marginLeft: "auto" }}>
               Sign out
             </button>
@@ -188,9 +190,10 @@ export default function App() {
             />
           )}
 
-          {view === "issues" && <DataIssues key={refreshKey} onViewVehicle={openVehicle} />}
+          {view === "issues" && <DataIssues key={refreshKey} onViewVehicle={openVehicle} onConnections={() => setView("connections")} />}
 
-          {view === "pipeline" && <Pipeline key={refreshKey} />}
+          {view === "pipeline" && <Pipeline key={refreshKey} onConnections={() => setView("connections")} />}
+          {view === 'jobs' && <BackendJobs />}
 
           {showImport && (
             <ImportFlow

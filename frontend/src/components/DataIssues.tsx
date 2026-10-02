@@ -5,6 +5,7 @@ import MappingRepair from "./MappingRepair";
 
 interface Props {
   onViewVehicle?: (vehicleId: string) => void;
+  onConnections?: () => void;
 }
 
 const CATEGORY_LABELS: Record<FailureCategory, string> = {
@@ -18,7 +19,7 @@ const CATEGORY_LABELS: Record<FailureCategory, string> = {
   INVALID_COORDINATES: "Invalid GPS coordinates",
   INVALID_TIME: "Invalid timestamp",
   TYPE_ERROR: "Changed value type",
-  IDEMPOTENCY_CONFLICT: "Conflicting event identity",
+  IDEMPOTENCY_CONFLICT: "Same record number, different readings",
 };
 
 const STATUS_CONFIG: Record<QuarantineStatus, { label: string; cls: string }> = {
@@ -91,12 +92,14 @@ function IncidentActionButton({
 function IncidentRow({
   incident,
   onSelect,
+  onRepair,
   onAcknowledge,
   onReconnect,
   onRetry,
 }: {
   incident: QuarantineIncident;
   onSelect: () => void;
+  onRepair: () => void;
   onAcknowledge: () => void;
   onReconnect: () => void;
   onRetry: () => void;
@@ -105,8 +108,7 @@ function IncidentRow({
   return (
     <tr className="incident-row" onClick={onSelect} style={{ cursor: "pointer" }}>
       <td>
-        <div className="incident-title">{incident.title}</div>
-        <div className="incident-category text-muted">{CATEGORY_LABELS[incident.failure_category]}</div>
+        <div className="incident-title">{CATEGORY_LABELS[incident.failure_category]}</div>
       </td>
       <td>{incident.oem_name || incident.oem_id || "–"}</td>
       <td className="mono">{incident.affected_vehicle_count}</td>
@@ -123,6 +125,7 @@ function IncidentRow({
         </span>
       </td>
       <td onClick={(e) => e.stopPropagation()}>
+        {incident.connection_id && ["UNRESOLVED", "REPLAY_FAILED"].includes(incident.status) && <button className="btn btn-primary btn-sm" onClick={onRepair}>Review & fix</button>}
         <IncidentActionButton
           incident={incident}
           onAcknowledge={onAcknowledge}
@@ -168,9 +171,9 @@ function IncidentDetailPanel({
         <div className="modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
           <div className="incident-detail-header">
             {detailError && <div className="alert alert-error">Affected vehicles could not be loaded: {detailError}</div>}
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{incident.title}</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{CATEGORY_LABELS[incident.failure_category]}</h3>
             <div className="text-muted" style={{ fontSize: 13, marginBottom: 16 }}>
-              {incident.description}
+              {incident.unresolved_event_count} readings waiting for review
             </div>
           </div>
 
@@ -205,7 +208,7 @@ function IncidentDetailPanel({
             <div className="alert alert-warning" style={{ marginTop: 16 }}>
               <span>📋</span>
               <div>
-                The OEM has changed its data format. Use the mapping workbench to inspect examples, test updated fields, and recover valid saved events.
+                Select Review & fix to check the new readings.
               </div>
             </div>
           )}
@@ -272,7 +275,7 @@ function IncidentDetailPanel({
           </div>
         </div>
         <div className="modal-footer">
-          {incident.connection_id && incident.status !== "RESOLVED" && <button className="btn btn-primary" onClick={onRepair}>Repair mapping & recover events</button>}
+          {incident.connection_id && incident.status !== "RESOLVED" && <button className="btn btn-primary" onClick={onRepair}>Review & fix</button>}
           <button className="btn btn-secondary" onClick={onClose}>Close</button>
         </div>
       </div>
@@ -280,7 +283,7 @@ function IncidentDetailPanel({
   );
 }
 
-export default function DataIssues({ onViewVehicle }: Props) {
+export default function DataIssues({ onViewVehicle, onConnections }: Props) {
   const [incidents, setIncidents] = useState<QuarantineIncident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -336,8 +339,8 @@ export default function DataIssues({ onViewVehicle }: Props) {
       <div className="section-header">
         <div>
           <div className="section-title">Data Issues</div>
-          <div className="section-subtitle">Data quality issues affecting vehicle projections</div>
-          <p className="text-muted">Open an issue to inspect OEM examples and repair changed fields before recovering historical data.</p>
+          <div className="section-subtitle">Review readings missing from your vehicle history</div>
+
         </div>
       </div>
 
@@ -422,6 +425,7 @@ export default function DataIssues({ onViewVehicle }: Props) {
                     key={incident.id}
                     incident={incident}
                     onSelect={() => setSelectedIncident(incident)}
+                    onRepair={() => setRepairIncidentId(incident.id)}
                     onAcknowledge={() => handleAcknowledge(incident.id)}
                     onReconnect={() => handleReconnect(incident)}
                     onRetry={() => handleRetry(incident.id)}
@@ -441,7 +445,7 @@ export default function DataIssues({ onViewVehicle }: Props) {
           onRepair={() => { setRepairIncidentId(selectedIncident.id); setSelectedIncident(null); }}
         />
       )}
-      {repairIncidentId && <MappingRepair incidentId={repairIncidentId} onClose={() => { setRepairIncidentId(null); loadIncidents(); }} onComplete={loadIncidents} />}
+      {repairIncidentId && <MappingRepair incidentId={repairIncidentId} onClose={() => { setRepairIncidentId(null); loadIncidents(); }} onComplete={loadIncidents} onConnections={onConnections} />}
     </div>
   );
 }

@@ -2,6 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import express from "express";
 import { createServer } from "http";
 import request from "supertest";
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { closeDb } from '../db/pool.js';
 
 process.env.NODE_ENV = "test";
 process.env.DEMO_MODE = "true";
@@ -176,6 +180,12 @@ describe("Token verification", () => {
 });
 
 describe("API error handling – vehicles endpoint", () => {
+  let isolatedDirectory:string;
+  beforeAll(()=>{
+    isolatedDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'zspeed-auth-test-'));
+    process.env.OVERRIDE_DB_PATH=path.join(isolatedDirectory,'auth.db');
+  });
+  afterAll(()=>{closeDb();delete process.env.OVERRIDE_DB_PATH;fs.rmSync(isolatedDirectory,{recursive:true,force:true});});
   it("GET /api/vehicles with demo token returns vehicles array", async () => {
     const testApp = express();
     testApp.use(express.json());

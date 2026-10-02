@@ -214,6 +214,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
   const liveEntry = useVehicleEntry(vehicleId);
   const [detail, setDetail] = useState<VehicleDetail | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [nextTripOffset,setNextTripOffset]=useState<number|null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [tripEvents, setTripEvents] = useState<TripEvent[]>([]);
   const [routeGeoJson, setRouteGeoJson] = useState<any>(null);
@@ -234,7 +235,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
 
     const unsubscribe = subscribeToFleetEvents((msg) => {
       if (msg.vehicleId === vehicleId && msg.eventType === "vehicle:trip") {
-        api.getVehicleTrips(vehicleId).then((r) => { setTrips(r.trips || []); setTripsError(null); })
+        api.getVehicleTrips(vehicleId).then((r) => { setTrips(r.trips || []);setNextTripOffset(r.nextOffset ?? null); setTripsError(null); })
           .catch(() => setTripsError("Trip history is temporarily unavailable. Existing data remains visible."));
       }
     });
@@ -251,6 +252,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
     let active = true;
     setDetail(null);
     setTrips([]);
+    setNextTripOffset(null);
     setSelectedTrip(null);
     setRouteGeoJson(null);
     setTripEvents([]);
@@ -286,6 +288,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
           return;
         }
         const sortedTrips = tripsResult.value.trips || [];
+        setNextTripOffset(tripsResult.value.nextOffset ?? null);
         setTrips(sortedTrips);
         if (sortedTrips.length > 0) {
           selectTrip(sortedTrips[0]);
@@ -299,7 +302,7 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
     setTripsLoading(true);
     setTripsError(null);
     api.getVehicleTrips(vehicleId, fromDate || undefined, toDate || undefined)
-      .then((r) => setTrips(r.trips || []))
+      .then((r) => {setTrips(r.trips || []);setNextTripOffset(r.nextOffset ?? null);})
       .catch(() => setTripsError("Could not update trip history. Previously loaded trips remain visible."))
       .finally(() => setTripsLoading(false));
   }, [vehicleId, fromDate, toDate]);
@@ -314,24 +317,36 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
     setTripErrors([]);
     const requestId = ++tripRequest.current;
 
-    Promise.allSettled([
-      api.getTripRoute(vehicleId, trip.id),
-      api.getTripEvents(vehicleId, trip.id),
-      api.getTripQuality(vehicleId, trip.id),
-    ])
-      .then(([routeRes, eventsRes, qualityRes]) => {
+    api.getTripBundle(vehicleId,trip.id)
+      .then((bundle) => {
         if (requestId !== tripRequest.current) return;
         const errors: string[] = [];
-        if (routeRes.status === "fulfilled") setRouteGeoJson(routeRes.value);
-        else errors.push("This trip has no available route. Valid vehicle location and trip details remain visible.");
-        if (eventsRes.status === "fulfilled") setTripEvents(eventsRes.value.events || []);
-        else errors.push("Trip events are temporarily unavailable.");
-        if (qualityRes.status === "fulfilled") setQuality(qualityRes.value);
-        else errors.push("Trip quality details are temporarily unavailable.");
+        setRouteGeoJson(bundle.route);
+        if (!bundle.route) errors.push("This trip has no available route. Valid vehicle location and trip details remain visible.");
+        setTripEvents(bundle.events || []);
+        setQuality(bundle.quality || null);
         setTripErrors(errors);
       })
+      .catch(() => { if(requestId===tripRequest.current) setTripErrors(['Trip details are being updated. Check Background Jobs for progress.']); })
       .finally(() => { if (requestId === tripRequest.current) setTripLoading(false); });
   }, [vehicleId]);
+
+  useEffect(()=>{
+    let active=true;
+    const timer=setInterval(()=>{
+      api.getVehicleDetail(vehicleId).then(value=>{if(active){setDetail(value);setDetailError(null);}}).catch(()=>{});
+      if(trips.length<=50) api.getVehicleTrips(vehicleId,fromDate||undefined,toDate||undefined).then(value=>{
+        if(active){
+          setTrips(value.trips||[]);setNextTripOffset(value.nextOffset??null);setTripsError(null);
+          if(!selectedTrip && value.trips.length) selectTrip(value.trips[0]);
+        }
+      }).catch(()=>{});
+      if(selectedTrip?.id) api.getTripBundle(vehicleId,selectedTrip.id).then(bundle=>{
+        if(active){setRouteGeoJson(bundle.route);setTripEvents(bundle.events||[]);setQuality(bundle.quality||null);}
+      }).catch(()=>{});
+    },10000);
+    return()=>{active=false;clearInterval(timer);};
+  },[vehicleId,selectedTrip?.id,trips.length,fromDate,toDate,selectTrip]);
 
   if (loading && !detail && !liveEntry) {
     return (
@@ -414,6 +429,8 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
       </div>
 
       {detailError && <div className="alert alert-warning">{detailError}</div>}
+      {detail?.freshness && <p className="text-muted" style={{fontSize:12}}>Saved summary updated {formatDate(detail.freshness.updatedAt)} · recent changes are processed in the background.</p>}
+      {detail?.stats && <p>{detail.stats.trips} trips · {formatDist(detail.stats.distanceKm)} recorded · {detail.healthTags?.length ? detail.healthTags.map(tag=>tag.replace(/_/g,' ').toLowerCase()).join(' · ') : 'No recorded health flags'}</p>}
       {detail?.dataQuality && (
         <div className="vehicle-detail-signals" aria-label="Vehicle data quality">
           <SignalCard label="Valid telemetry records" value={detail.dataQuality.validEvents.toLocaleString()} />
@@ -502,6 +519,11 @@ export default function VehicleDetailView({ vehicleId, onBack }: Props) {
                     ))}
                   </tbody>
                 </table>
+                {nextTripOffset!==null && <button className="btn btn-secondary btn-sm" style={{margin:12}} onClick={()=>{
+                  api.getVehicleTrips(vehicleId,fromDate||undefined,toDate||undefined,nextTripOffset)
+                    .then(r=>{setTrips(previous=>[...previous,...r.trips.filter(t=>!previous.some(p=>p.id===t.id))]);setNextTripOffset(r.nextOffset??null);})
+                    .catch(()=>setTripsError('Could not load older trips. Existing trips remain visible.'));
+                }}>Load older trips</button>}
               </div>
             )}
           </div>

@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api, authedFetch, ApiError } from "../api";
 import type { PipelineHealth, RawEvent, MappingProfile } from "../types";
 import { subscribeToFleetEvents } from "../socket";
 import MappingRepair from "./MappingRepair";
+import { createBackgroundRefresh } from '../background-refresh';
 
 interface SectionState<T> {
   data: T | null;
@@ -25,7 +26,7 @@ function SectionError({ message, onRetry }: { message: string; onRetry: () => vo
   );
 }
 
-export default function Pipeline() {
+export default function Pipeline({ onConnections }: { onConnections?: () => void }) {
   const [health, setHealth] = useState<SectionState<PipelineHealth>>(sectionInit());
   const [quarantined, setQuarantined] = useState<SectionState<RawEvent[]>>(sectionInit());
   const [profiles, setProfiles] = useState<SectionState<MappingProfile[]>>(sectionInit());
@@ -33,63 +34,50 @@ export default function Pipeline() {
   const [replayError, setReplayError] = useState<string | null>(null);
   const [repairIncidentId, setRepairIncidentId] = useState<string | null>(null);
   const [repairIssues, setRepairIssues] = useState<any[]>([]);
+  const refreshers=useRef<Record<string,ReturnType<typeof createBackgroundRefresh<any>>>>({});
 
   const loadHealth = useCallback(async () => {
-    setHealth((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const res = await authedFetch("/api/ingestion/pipeline-health");
-      if (!res.ok) throw new ApiError(res.status, "server_error", `Failed to load health: ${res.status}`);
-      const data = await res.json();
-      setHealth({ data, loading: false, error: null });
-    } catch (err: any) {
-      if (err instanceof ApiError && err.status === 401) return;
-      setHealth({ data: null, loading: false, error: err.message || "Failed to load pipeline health." });
-    }
+    setHealth(s=>({...s,loading:s.data===null}));
+    await refreshers.current.health?.refresh();
   }, []);
 
   const loadQuarantine = useCallback(async () => {
-    setQuarantined((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const res = await authedFetch("/api/ingestion/quarantine");
-      if (!res.ok) throw new ApiError(res.status, "server_error", `Failed to load quarantine: ${res.status}`);
-      const data = await res.json();
-      setQuarantined({ data: data.events || [], loading: false, error: null });
-    } catch (err: any) {
-      if (err instanceof ApiError && err.status === 401) return;
-      setQuarantined({ data: null, loading: false, error: err.message || "Failed to load quarantined events." });
-    }
+    setQuarantined(s=>({...s,loading:s.data===null}));
+    await refreshers.current.quarantine?.refresh();
   }, []);
 
   const loadMappings = useCallback(async () => {
-    setProfiles((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const res = await authedFetch("/api/ingestion/mappings");
-      if (!res.ok) throw new ApiError(res.status, "server_error", `Failed to load mappings: ${res.status}`);
-      const data = await res.json();
-      setProfiles({ data: data.profiles || [], loading: false, error: null });
-    } catch (err: any) {
-      if (err instanceof ApiError && err.status === 401) return;
-      setProfiles({ data: null, loading: false, error: err.message || "Failed to load mapping profiles." });
-    }
+    setProfiles(s=>({...s,loading:s.data===null}));
+    await refreshers.current.mappings?.refresh();
   }, []);
 
   useEffect(() => {
+    let active=true;
+    const get=async(path:string)=>{
+      const response=await authedFetch(path);
+      if(!response.ok)throw new ApiError(response.status,'server_error','Updates are temporarily unavailable.');
+      return response.json();
+    };
+    refreshers.current={
+      health:createBackgroundRefresh(()=>get('/api/ingestion/pipeline-health'),data=>setHealth({data,loading:false,error:null}),()=>setHealth(s=>({...s,loading:false,error:'Status updates are delayed. Your last figures remain available.'}))),
+      quarantine:createBackgroundRefresh(()=>get('/api/ingestion/quarantine'),data=>setQuarantined({data:data.events||[],loading:false,error:null}),()=>setQuarantined(s=>({...s,loading:false,error:'Record updates are delayed. Your last results remain available.'}))),
+      mappings:createBackgroundRefresh(()=>get('/api/ingestion/mappings'),data=>setProfiles({data:data.profiles||[],loading:false,error:null}),()=>setProfiles(s=>({...s,loading:false,error:'Mapping updates are delayed. Your last profiles remain available.'}))),
+    };
     loadHealth();
     loadQuarantine();
     loadMappings();
-    api.getQuarantineIncidents().then(result => setRepairIssues(result.incidents.filter(incident => incident.status !== "RESOLVED"))).catch(() => {});
+    api.getQuarantineIncidents().then(result => {if(active)setRepairIssues(result.incidents.filter(incident => incident.status !== "RESOLVED"));}).catch(() => {});
+    let refreshTimer:ReturnType<typeof setTimeout>|undefined;
     const unsubscribe = subscribeToFleetEvents((msg) => {
       if (
         msg.eventType === "quarantine:count" ||
         msg.eventType === "connection:health" ||
         msg.eventType === "pipeline:health"
       ) {
-        loadHealth();
-        loadQuarantine();
-        loadMappings();
+        if(!refreshTimer) refreshTimer=setTimeout(()=>{refreshTimer=undefined;loadHealth();loadQuarantine();},750);
       }
     });
-    return () => unsubscribe();
+    return () => {active=false;unsubscribe();clearTimeout(refreshTimer);Object.values(refreshers.current).forEach(task=>task.dispose());};
   }, [loadHealth, loadQuarantine, loadMappings]);
 
   async function handleReplay(profileId: string) {
@@ -115,7 +103,7 @@ export default function Pipeline() {
       <div className="section-header">
         <div>
           <h1 className="section-title">Data Pipeline</h1>
-          <p className="section-subtitle">Manage ingestion health, quarantines, and mapping profiles</p>
+          <p className="section-subtitle">Monitor incoming vehicle data, review held records and manage OEM mappings.</p>
         </div>
       </div>
 
@@ -159,13 +147,12 @@ export default function Pipeline() {
 
       {activeTab === "health" && (
         <>
-          {health.loading ? (
+          {health.error && <SectionError message={health.error} onRetry={loadHealth} />}
+          {health.loading && !health.data ? (
             <div className="loading-state">
               <div className="spinner spinner-lg" />
               Loading pipeline health…
             </div>
-          ) : health.error ? (
-            <SectionError message={health.error} onRetry={loadHealth} />
           ) : health.data ? (
             <div className="stats-grid">
               <div className="stat-card">
@@ -173,7 +160,7 @@ export default function Pipeline() {
                 <div className="stat-card-value text-primary">{health.data.processed}</div>
               </div>
               <div className="stat-card">
-                <div className="stat-card-label">Quarantined (Action Req)</div>
+                <div className="stat-card-label">Records requiring review</div>
                 <div className="stat-card-value text-warning">{health.data.quarantined}</div>
               </div>
               <div className="stat-card">
@@ -191,13 +178,12 @@ export default function Pipeline() {
 
       {activeTab === "quarantine" && (
         <>
-          {quarantined.loading ? (
+          {quarantined.error && <SectionError message={quarantined.error} onRetry={loadQuarantine} />}
+          {quarantined.loading && !quarantined.data ? (
             <div className="loading-state">
               <div className="spinner spinner-lg" />
               Loading quarantined events…
             </div>
-          ) : quarantined.error ? (
-            <SectionError message={quarantined.error} onRetry={loadQuarantine} />
           ) : (
             <>
               <h2 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "16px" }}>Quarantined Events</h2>
@@ -245,17 +231,16 @@ export default function Pipeline() {
 
       {activeTab === "mappings" && (
         <>
-          {profiles.loading ? (
+          {profiles.error && <SectionError message={profiles.error} onRetry={loadMappings} />}
+          {profiles.loading && !profiles.data ? (
             <div className="loading-state">
               <div className="spinner spinner-lg" />
               Loading mapping profiles…
             </div>
-          ) : profiles.error ? (
-            <SectionError message={profiles.error} onRetry={loadMappings} />
           ) : (
             <>
               <h2 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "16px" }}>Mapping Profiles</h2>
-              <div className="card" style={{ padding: 16, marginBottom: 20 }}><h3>Guided mapping repair</h3><p className="text-muted">Select an issue to map renamed fields, changed units or status codes, test saved examples, and recover valid history.</p>{repairIssues.length ? <select className="input-field" aria-label="Issue to repair" value="" onChange={event => setRepairIncidentId(event.target.value || null)}><option value="">Choose a data issue…</option>{repairIssues.map(incident => <option key={incident.id} value={incident.id}>{incident.oem_name} · {incident.title} · {incident.unresolved_event_count} events</option>)}</select> : <p>No active issues. Open Data Issues after an OEM format changes.</p>}</div>
+              <div className="card" style={{ padding: 16, marginBottom: 20 }}><h3>Restore vehicle readings</h3><p className="text-muted">Choose the issue you want to fix.</p>{repairIssues.length ? <select className="input-field" aria-label="Issue to repair" value="" onChange={event => setRepairIncidentId(event.target.value || null)}><option value="">Choose a data issue…</option>{repairIssues.map(incident => <option key={incident.id} value={incident.id}>{incident.oem_name} · {incident.title} · {incident.unresolved_event_count} events</option>)}</select> : <p>No active issues. Open Data Issues after an OEM format changes.</p>}</div>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -299,7 +284,7 @@ export default function Pipeline() {
           )}
         </>
       )}
-      {repairIncidentId && <MappingRepair incidentId={repairIncidentId} onClose={() => { setRepairIncidentId(null); loadMappings(); loadQuarantine(); }} onComplete={() => { loadMappings(); loadQuarantine(); loadHealth(); }} />}
+      {repairIncidentId && <MappingRepair incidentId={repairIncidentId} onClose={() => { setRepairIncidentId(null); loadMappings(); loadQuarantine(); }} onComplete={() => { loadMappings(); loadQuarantine(); loadHealth(); }} onConnections={onConnections} />}
     </div>
   );
 }

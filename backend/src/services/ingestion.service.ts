@@ -799,7 +799,7 @@ export function replayEvents(mappingProfileId: string, selectionCriteria?: any):
   return { jobId };
 }
 
-export function runReplayJob(jobId: string, mappingProfileId: string): void {
+export function runReplayJob(jobId: string, mappingProfileId: string, batchLimit=Number.MAX_SAFE_INTEGER): void {
   try {
     const profile = queryOne<{ oem_format_version_id: string; status: string }>(
       "SELECT oem_format_version_id, status FROM mapping_profiles WHERE id = ?",
@@ -819,8 +819,8 @@ export function runReplayJob(jobId: string, mappingProfileId: string): void {
       return;
     }
 
-    const jobRow = queryOne<{ selection_criteria: string; fleet_id: string; incident_id: string }>(
-      "SELECT selection_criteria, fleet_id, incident_id FROM replay_jobs WHERE id = ?",
+    const jobRow = queryOne<any>(
+      "SELECT * FROM replay_jobs WHERE id = ?",
       [jobId]
     );
     const criteria = jobRow ? JSON.parse(jobRow.selection_criteria || "{}") : {};
@@ -864,20 +864,30 @@ export function runReplayJob(jobId: string, mappingProfileId: string): void {
 
     rawEventsSql += " ORDER BY re.recorded_at ASC ";
 
-    const rawEvents = query<RawEvent>(rawEventsSql, params);
-    let processed = 0;
-    let error = 0;
-    const total = rawEvents.length;
+    if (!jobRow?.items_initialized) transaction(() => {
+      run(`INSERT OR IGNORE INTO replay_job_items(job_id,raw_event_id) SELECT ?,id FROM (${rawEventsSql})`,[jobId,...params]);
+      run('UPDATE replay_jobs SET items_initialized=1 WHERE id=?',[jobId]);
+    });
+    const rawEvents = query<RawEvent>(`SELECT re.* FROM replay_job_items i JOIN raw_events re ON re.id=i.raw_event_id
+      WHERE i.job_id=? AND i.status='PENDING' ORDER BY re.recorded_at,re.id LIMIT ?`,[jobId,batchLimit]);
+    const counts=queryOne<any>(`SELECT COUNT(*) total,SUM(status='DONE') processed,SUM(status='FAILED') errors FROM replay_job_items WHERE job_id=?`,[jobId]);
+    let processed = counts?.processed || 0;
+    let error = counts?.errors || 0;
+    const total = counts?.total || 0;
 
     run("UPDATE replay_jobs SET total_events = ? WHERE id = ?", [total, jobId]);
 
     for (const evt of rawEvents) {
+      transaction(() => {
+      const errorsBefore=error;
       const freshCheck = queryOne<{ processing_status: string }>(
         "SELECT processing_status FROM raw_events WHERE id = ?",
         [evt.id]
       );
       if (freshCheck && freshCheck.processing_status === "PROCESSED") {
-        continue;
+        processed++;
+        run("UPDATE replay_job_items SET status='DONE' WHERE job_id=? AND raw_event_id=?",[jobId,evt.id]);
+        return;
       }
 
       try {
@@ -923,13 +933,17 @@ export function runReplayJob(jobId: string, mappingProfileId: string): void {
       }
 
       const progress = total > 0 ? Math.round(((processed + error) / total) * 100) : 100;
+      run('UPDATE replay_job_items SET status=? WHERE job_id=? AND raw_event_id=?',[error>errorsBefore?'FAILED':'DONE',jobId,evt.id]);
       run(
         `UPDATE replay_jobs
          SET processed_events = ?, error_events = ?, progress_pct = ?
          WHERE id = ?`,
         [processed, error, progress, jobId]
       );
+      });
     }
+
+    if (queryOne<any>("SELECT 1 FROM replay_job_items WHERE job_id=? AND status='PENDING' LIMIT 1",[jobId])) return;
 
     let finalOutcome = "SUCCESS";
     if (total === 0) {

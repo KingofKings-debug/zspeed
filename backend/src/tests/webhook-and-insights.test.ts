@@ -399,7 +399,8 @@ describe("Durable Fleet Insights Projections and Consistency", () => {
     const drilldown = getFleetInsightDrilldown(FLEET_A, "data_quality_issues");
     expect(drilldown.vehicles.map(vehicle => vehicle.vehicle_id).sort()).toEqual(["veh_a_1", "veh_a_2"]);
     expect(recalculateFleetInsights(FLEET_B).data_quality_issues).toBe(0);
-    expect(getVehicleCurrentDetail("veh_a_1").dataQuality).toEqual({ validEvents: 0, quarantinedEvents: 1, unresolvedEvents: 12000 });
+    // Retry records for one raw event represent one unresolved telemetry event.
+    expect(getVehicleCurrentDetail("veh_a_1").dataQuality).toEqual({ validEvents: 0, quarantinedEvents: 1, unresolvedEvents: 1 });
     expect(getVehicleCurrentDetail("veh_b_1").dataQuality).toEqual({ validEvents: 0, quarantinedEvents: 0, unresolvedEvents: 0 });
   });
 

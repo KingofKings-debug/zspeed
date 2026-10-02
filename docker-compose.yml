@@ -1,5 +1,14 @@
 name: zspeed
 services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
   simulator:
     build:
       context: .
@@ -27,6 +36,10 @@ services:
     environment:
       PORT: "3001"
       DB_PATH: /app/backend/data/zspeed.db
+      READ_MODEL_PATH: /app/backend/data/vehicle-reads.db
+      READ_REPLICA_PATH: /app/backend/data/vehicle-replica.db
+      REDIS_URL: redis://redis:6379
+      MAINTENANCE_TIMEZONE: ${MAINTENANCE_TIMEZONE:-UTC}
       PLATFORM_BASE_URL: http://backend:3001
       VOLTERA_BASE_URL: http://simulator:3002/oem/voltera
       CRESTLINE_BASE_URL: http://simulator:3002/oem/crestline

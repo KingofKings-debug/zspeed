@@ -29,7 +29,26 @@ export function repairContext(fleetId: string, incidentId: string) {
   const templates = query<any>(`SELECT mp.id, mp.mapping_version, ofv.format_version FROM mapping_profiles mp JOIN oem_format_versions ofv ON ofv.id = mp.oem_format_version_id WHERE ofv.oem_id = ? AND mp.status = 'ACTIVE' AND NOT EXISTS(SELECT 1 FROM mapping_repairs mr WHERE mr.profile_id = mp.id)`, [incident.oem_id]).map(profile => ({ ...profile, rules: query<any>("SELECT * FROM mapping_rules WHERE mapping_profile_id = ?", [profile.id]) }));
   const count = queryOne<any>(`SELECT COUNT(DISTINCT re.id) AS total FROM raw_events re JOIN quarantine_records qr ON qr.raw_event_id = re.id WHERE qr.incident_id = ? AND re.fleet_id = ? AND re.processing_status = 'QUARANTINED'`, [incidentId, fleetId])?.total || 0;
   const latestJob = queryOne<any>("SELECT * FROM replay_jobs WHERE fleet_id = ? AND incident_id = ? ORDER BY rowid DESC LIMIT 1", [fleetId, incidentId]);
-  return { incident, samples, paths: paths.filter(field => field.example !== "[REDACTED]"), signals: repairSignals(), templates, total: count, latestJob, existing: existing ? { ...existing, configuration: JSON.parse(existing.configuration) } : null };
+  const lastAccepted = queryOne<any>(`SELECT ne.mapping_profile_id, re.payload FROM normalized_events ne JOIN raw_events re ON re.id = ne.raw_event_id WHERE re.fleet_id = ? AND re.connection_id = ? AND re.processing_status = 'PROCESSED' ORDER BY re.recorded_at DESC, re.rowid DESC LIMIT 1`, [fleetId, incident.connection_id]);
+  const lastRepair = lastAccepted && queryOne<any>('SELECT configuration FROM mapping_repairs WHERE profile_id = ? AND fleet_id = ? AND connection_id = ?', [lastAccepted.mapping_profile_id, fleetId, incident.connection_id]);
+  const baseline = lastAccepted ? { profile_id: lastAccepted.mapping_profile_id, sample: redactSensitive(parsePayload(lastAccepted.payload)), rules: lastRepair ? JSON.parse(lastRepair.configuration).rules : query<any>('SELECT * FROM mapping_rules WHERE mapping_profile_id = ?', [lastAccepted.mapping_profile_id]).map(rule => ({ signal_id: rule.destination_signal_id, sources: [rule.source_field_path], conversion: rule.conversion_type, required: rule.destination_signal_id === 'sig_event_time', ...(rule.enum_mapping ? { enum_map: JSON.parse(rule.enum_mapping) } : {}) })) } : null;
+  const signals = repairSignals();
+  const failureText = query<any>("SELECT DISTINCT failure_detail FROM quarantine_records WHERE fleet_id = ? AND incident_id = ? AND status != 'RESOLVED' LIMIT 60", [fleetId, incidentId]).map(row => row.failure_detail || '').join('\n');
+  const affected_signals = signals.filter(signal => new RegExp(`\\b${signal.name}\\b`, 'i').test(failureText)).map(signal => ({ id: signal.id, name: signal.name, data_type: signal.data_type }));
+  const conflicts = rows.filter(row => queryOne("SELECT id FROM quarantine_records WHERE raw_event_id = ? AND failure_category = 'IDEMPOTENCY_CONFLICT'", [row.id])).map(row => {
+    const previous = queryOne<any>("SELECT * FROM raw_events WHERE fleet_id = ? AND connection_id = ? AND source_event_id = ? AND id != ? AND payload_hash != ? ORDER BY rowid LIMIT 1", [fleetId, row.connection_id, row.source_event_id, row.id, row.payload_hash]);
+    const original = redactSensitive(parsePayload(previous?.payload || 'null'));
+    const incoming = redactSensitive(parsePayload(row.payload));
+    const fields = [...new Set([...inspectFields(original), ...inspectFields(incoming)].map(field => field.path))];
+    const valueAt = (payload: any, path: string) => payload && Object.hasOwn(payload, path) ? payload[path] : path.split('.').reduce((value, part) => value?.[part], payload);
+    return { id: row.id, reference: row.source_event_id, vehicle: row.source_vehicle_id,
+      previous: previous ? { received_at: previous.recorded_at, vehicle: previous.source_vehicle_id, status: previous.processing_status } : null,
+      received_at: row.recorded_at,
+      differences: fields.map(path => ({ field: path, saved: valueAt(original, path) ?? null, incoming: valueAt(incoming, path) ?? null })).filter(field => JSON.stringify(field.saved) !== JSON.stringify(field.incoming)) };
+  });
+  const connection = queryOne<any>('SELECT status FROM oem_connections WHERE id = ? AND fleet_id = ?', [incident.connection_id, fleetId]);
+  const nextAction = conflicts.length === rows.length && rows.length ? 'provider' : connection?.status === 'EXPIRED' ? 'reconnect' : incident.failure_category === 'MISSING_VEHICLE_MAPPING' ? 'vehicle' : rows.length && rows.every(row => { const payload = parsePayload(row.payload); return !payload || typeof payload !== 'object' || Array.isArray(payload); }) ? 'provider' : 'readings';
+  return { incident, samples, baseline, affected_signals, conflicts, nextAction, paths: paths.filter(field => field.example !== "[REDACTED]"), signals, templates, total: count, latestJob, existing: existing ? { ...existing, configuration: JSON.parse(existing.configuration) } : null };
 }
 const validPath = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 200 && !value.split(".").some(part => !part || ["__proto__", "prototype", "constructor"].includes(part) || redactSensitive({ [part]: "check" })[part] === "[REDACTED]");
 export function validateRepairConfiguration(input: any): RepairConfiguration {
@@ -49,7 +68,8 @@ export function validateRepairConfiguration(input: any): RepairConfiguration {
   }
   if (!seen.has("sig_event_time")) throw new AppError(400, "VALIDATION_ERROR", "Map the originating event timestamp");
   if (input.discriminator && (!validPath(input.discriminator.path) || typeof input.discriminator.value !== "string" || !input.discriminator.value || input.discriminator.value.length > 100)) throw new AppError(400, "VALIDATION_ERROR", "Select a format/version field and its expected value");
-  return { name: input.name.trim(), rules: input.rules, live_mode: input.live_mode, ...(input.discriminator ? { discriminator: input.discriminator } : {}) };
+  if (input.field_decisions && (typeof input.field_decisions !== 'object' || Array.isArray(input.field_decisions) || Object.keys(input.field_decisions).length > 200 || Object.entries(input.field_decisions).some(([source, decision]) => !validPath(source) || !['IGNORE', 'REMOVED'].includes(String(decision)) || input.rules.some((rule: any) => rule.sources.includes(source))))) throw new AppError(400, 'VALIDATION_ERROR', 'A field can be used or left unused, not both');
+  return { name: input.name.trim(), rules: input.rules, live_mode: input.live_mode, ...(input.discriminator ? { discriminator: input.discriminator } : {}), ...(input.field_decisions ? { field_decisions: input.field_decisions } : {}) };
 }
 export function repairProfile(fleetId: string, id: string): any {
   const row = queryOne<any>("SELECT mr.*, mp.status FROM mapping_repairs mr JOIN mapping_profiles mp ON mp.id = mr.profile_id WHERE mr.profile_id = ? AND mr.fleet_id = ?", [id, fleetId]);
@@ -82,11 +102,12 @@ export function testRepair(fleetId: string, id: string) {
     const result = evaluateRepair(profile.configuration, parsePayload(row.payload), signals);
     const connection = queryOne<any>("SELECT status FROM oem_connections WHERE id = ?", [row.connection_id]);
     if (connection?.status === "EXPIRED") result.errors.push("Reconnect the OEM account before recovery");
-    if (!queryOne("SELECT id FROM vehicle_source_mappings WHERE connection_id = ? AND oem_vehicle_id = ?", [row.connection_id, row.source_vehicle_id])) result.errors.push("Map this OEM vehicle in Connections before recovery");
+    const vehicleMissing = !queryOne("SELECT id FROM vehicle_source_mappings WHERE connection_id = ? AND oem_vehicle_id = ?", [row.connection_id, row.source_vehicle_id]);
+    if (vehicleMissing) result.errors.push("Choose the vehicle for these readings in Connections");
     const conflict = queryOne("SELECT id FROM quarantine_records WHERE raw_event_id = ? AND failure_category = 'IDEMPOTENCY_CONFLICT'", [row.id]);
-    if (conflict) result.errors.push("Conflicting event identity requires OEM investigation; a field mapping cannot resolve it");
+    if (conflict) result.errors.push("This record number was sent with different readings. Download the correction request for your vehicle data provider.");
     result.success = result.errors.length === 0;
-    return { id: row.id, ...redactSensitive(result) };
+    return { id: row.id, nextAction: conflict ? 'provider' : connection?.status === 'EXPIRED' ? 'reconnect' : vehicleMissing ? 'vehicle' : 'readings', ...redactSensitive(result) };
   });
   const regressions = profile.configuration.live_mode === "matching" ? query<any>("SELECT re.id, re.payload, ne.canonical_values FROM raw_events re JOIN normalized_events ne ON ne.raw_event_id = re.id WHERE re.fleet_id = ? AND re.connection_id = ? AND re.processing_status = 'PROCESSED' ORDER BY re.recorded_at DESC LIMIT 20", [fleetId, profile.connection_id]).filter(row => matchesRepairPayload(profile.configuration, parsePayload(row.payload))).map(row => {
     const result = evaluateRepair(profile.configuration, parsePayload(row.payload), signals);

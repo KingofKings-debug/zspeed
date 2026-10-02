@@ -1000,6 +1000,12 @@ textarea.input-field {
 .justify-between { justify-content: space-between; }
 .flex-wrap { flex-wrap: wrap; }
 
+@media (max-width: 1200px) {
+  .app-header { height: auto; min-height: 48px; flex-wrap: wrap; padding: 8px 16px 0; }
+  .app-nav { flex: 1 1 100%; height: auto; flex-wrap: wrap; }
+  .app-nav button { height: 40px; padding: 0 12px; }
+}
+
 @media (max-width: 768px) {
   .app-main {
     padding: 16px;
@@ -1313,6 +1319,54 @@ textarea.input-field {
 }
 
 .repair-modal { width: min(1100px, 96vw); max-width: 1100px; max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; }
+.repair-steps[hidden] { display: none; }
+.repair-start-cards, .repair-reading-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 18px 0; }
+.repair-start-cards > div, .repair-reading-cards > div { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--color-border-light); border-radius: 10px; padding: 18px; background: #f8fafc; overflow-wrap: anywhere; }
+.repair-reading-cards small { color: #64748b; }
+.repair-measurement-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+.repair-measurement-tabs button { font: inherit; padding: 10px 14px; border: 1px solid #dce3ed; border-radius: 20px; background: #fff; cursor: pointer; }
+.repair-measurement-tabs button.active { background: #e4edfa; border-color: #456daa; color: #2c528c; }
+.repair-guided-card { background: #f8fafc; border: 1px solid #dce3ed; border-radius: 10px; padding: 20px; margin-bottom: 18px; }
+.repair-value-preview { display: flex; gap: 32px; flex-wrap: wrap; margin: 20px 0; }
+.repair-value-preview span { display: flex; flex-direction: column; gap: 8px; color: #64748b; }
+.repair-value-preview strong { color: #1e293b; overflow-wrap: anywhere; }
+.repair-advanced { border: 1px solid #dce3ed; padding: 16px; border-radius: 10px; margin: 18px 0; }
+.repair-advanced > summary { cursor: pointer; color: #456daa; }
+.repair-next-action { display: flex; align-items: flex-start; flex-direction: column; gap: 16px; margin: 24px 0; }
+.repair-workbench { display: grid; grid-template-columns: 185px minmax(0, 1fr); grid-template-rows: auto 1fr; align-items: start; gap: 18px; }
+.repair-kind-tabs { grid-column: 1; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 8px; align-self: start; }
+.repair-kind-tabs button { font: inherit; font-size: 13px; text-align: left; padding: 14px 12px; border: 1px solid #dce3ed; border-radius: 8px; background: #fafbfd; cursor: pointer; color: #475569; display: flex; justify-content: space-between; gap: 8px; }
+.repair-kind-tabs button.active { background: #e4edfa; color: #2c528c; border-color: #456daa; font-weight: 700; }
+.repair-kind-tabs small { background: white; padding: 1px 6px; border-radius: 12px; }
+.repair-workbench-heading, .repair-workbench > fieldset { grid-column: 2; }
+.repair-workbench-heading h3 { margin-top: 0; }
+.repair-workbench-heading .repair-label { margin-bottom: 0; }
+.repair-workbench .repair-guided-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.repair-workbench .repair-guided-card > .repair-label { margin: 0; }
+.repair-workbench .repair-guided-card > .repair-inline-preview, .repair-workbench .repair-guided-card > .text-muted, .repair-workbench .repair-guided-card > .repair-code-choices, .repair-workbench .repair-guided-card > .repair-rule-inputs { grid-column: 1 / -1; }
+.repair-match-heading, .repair-match-row { display: grid; grid-template-columns: 145px minmax(170px, 1fr) 165px; gap: 14px; align-items: center; }
+.repair-match-heading { color: #64748b; font-size: 12px; padding: 0 14px 8px; }
+.repair-match-row { padding: 14px; border: 1px solid #dce3ed; border-radius: 10px; margin-bottom: 12px; }
+.repair-match-row > div:first-child, .repair-added-row > div:first-child, .repair-missing-card > div:first-child { display: flex; flex-direction: column; gap: 8px; overflow-wrap: anywhere; }
+.repair-match-row small { color: #64748b; font-size: 12px; }
+.repair-match-row .repair-label { margin-top: 0; }
+.repair-inline-preview { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px; background: #edf7f3; border-radius: 8px; flex-wrap: wrap; }
+.repair-inline-preview > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.repair-inline-preview small { color: #64748b; }
+.repair-inline-preview strong { overflow-wrap: anywhere; }
+.repair-preview-invalid { background: #fff4e6; color: #915100; }
+.repair-match-row .repair-inline-preview { flex-direction: column; align-items: flex-start; }
+.repair-guided-card > .text-muted { display: block; margin-top: 12px; }
+.repair-added-row, .repair-missing-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 1.2fr); gap: 20px; align-items: center; border: 1px solid #dce3ed; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+.repair-added-row small { color: #64748b; }
+.repair-added-row .repair-label { margin: 0; }
+.repair-decision { color: #26765d; font-size: 13px; grid-column: 2; }
+.repair-outcome-note { border-radius: 8px; padding: 14px; background: #f5f7fa; font-size: 13px; color: #64748b; }
+.repair-type-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.repair-type-card { display: flex; flex-direction: column; text-align: left; gap: 10px; padding: 20px; border: 1px solid #dce3ed; background: #fafbfd; border-radius: 10px; font: inherit; cursor: pointer; }
+.repair-type-card:hover { border-color: #456daa; background: #e4edfa; }
+.repair-type-card span, .repair-type-card small { color: #64748b; font-size: 13px; }
+@media (max-width: 850px) { .repair-workbench { display: block; } .repair-workbench .repair-guided-card { grid-template-columns: 1fr; } .repair-kind-tabs { display: flex; flex-direction: row; overflow-x: auto; padding-bottom: 12px; margin-bottom: 12px; } .repair-kind-tabs button { flex-shrink: 0; max-width: 170px; } .repair-match-heading { display: none; } .repair-match-row, .repair-added-row, .repair-missing-card { grid-template-columns: 1fr; } .repair-match-row .repair-inline-preview { flex-direction: row; } .repair-decision { grid-column: 1; } }
 .repair-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 14px 22px; border-bottom: 1px solid var(--color-border-light); }
 .repair-steps button { padding: 10px; border: 0; border-radius: 6px; background: #f1f4f8; color: #536174; cursor: pointer; font: inherit; }
 .repair-steps button.active { background: #e4edfa; color: #2c528c; font-weight: 700; }

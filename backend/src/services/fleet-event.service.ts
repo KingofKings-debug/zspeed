@@ -103,6 +103,7 @@ export function recordFleetEventDurable(params: {
 }
 
 export function publishFleetEventSocket(message: FleetSocketMessage): void {
+  if (process.env.ZSPEED_BACKGROUND_WORKER==='true' && process.send && process.connected) { process.send({type:'fleet-event',event:message}); return; }
   try {
     const io = getIo();
     if (io) {

@@ -14,7 +14,12 @@ import ingestionRoutes from "./routes/ingestion.routes.js";
 import quarantineRoutes from "./routes/quarantine.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import vehicleDetailRoutes from "./routes/vehicle-detail.routes.js";
-import { startWorker } from "./services/worker.service.js";
+import readModelRoutes from './routes/read-model.routes.js';
+import { startBackgroundWorker, recordReadLoad } from './services/background-supervisor.js';
+import { replicaSnapshot,openReadStore,readStorePath } from './db/read-store.js';
+import { cacheStatus } from './services/read-cache.service.js';
+import { getFleetId } from './middleware/fleet.js';
+import { workerBudget } from './services/background-scheduler.js';
 import { initializeDeliveries } from "./services/delivery.service.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -27,6 +32,7 @@ const httpServer = createServer(app);
 initSocket(httpServer);
 
 app.use(helmet({ contentSecurityPolicy: false }));
+app.use((_req,_res,next)=>{ recordReadLoad(); next(); });
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
 app.use(
   express.json({
@@ -52,12 +58,20 @@ app.use((req, res, next) => {
 });
 
 app.use("/api/vehicles", vehicleRoutes);
+app.use('/api/vehicles', readModelRoutes);
 app.use("/api/vehicles", vehicleDetailRoutes);
 app.use("/api/oems", oemRoutes);
 app.use("/api/connections", connectionRoutes);
 app.use("/api/integration-requests", integrationRoutes);
 app.use("/api/ingestion", ingestionRoutes);
 app.use("/api/quarantine", quarantineRoutes);
+app.get('/api/backend-jobs',(req,res,next)=>{
+  try {
+    const snapshot=replicaSnapshot('jobs',getFleetId(req),getFleetId(req));
+    res.json({...(snapshot || {mode:'STARTING',refresh:{pending:0,failed:0},activities:[]}),
+      workerOnline:!!snapshot && Date.now()-Date.parse(snapshot.heartbeat)<30000,cache:cacheStatus()});
+  } catch(error) { next(error); }
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,9 +94,14 @@ app.use(errorHandler);
 async function start() {
   try {
     validateProductionConfig();
+    new Intl.DateTimeFormat('en-GB',{timeZone:process.env.MAINTENANCE_TIMEZONE || 'UTC'}).format(new Date());
+    workerBudget(0,0,0);
     runMigrations();
     seedDatabase();
-    startWorker();
+    const operational=path.resolve(process.env.DB_PATH || 'data/zspeed.db');
+    if(new Set([operational,readStorePath(),readStorePath(true)].map(p=>process.platform==='win32'?p.toLowerCase():p)).size!==3) throw new Error('Operational, read model and replica database paths must be different');
+    openReadStore();openReadStore(true);
+    startBackgroundWorker();
     initializeDeliveries();
 
     httpServer.on("error", (err: NodeJS.ErrnoException) => {

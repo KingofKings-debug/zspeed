@@ -9,3 +9,4 @@ dist
 simulator-manifest.json
 docker/credentials.txt
 deployment-*.tar.gz
+*.worker-lock

@@ -1,4 +1,6 @@
 import { execRaw, queryOne } from "./pool.js";
+import { installReadOutbox } from './read-migrations.js';
+import { installActivityGroups } from './activity-migrations.js';
 
 export function runMigrations(): void {
   console.log("Running database migrations...");
@@ -654,6 +656,8 @@ export function runMigrations(): void {
     execRaw("INSERT INTO _migrations(name) VALUES ('011_mapping_repairs')");
   }
 
+  installReadOutbox();
+  installActivityGroups();
   console.log("Migrations complete.");
 }
 

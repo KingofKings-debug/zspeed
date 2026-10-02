@@ -1,0 +1,1 @@
+Final v2: 14 pages rendered with Word and rasterized with bundled Poppler. All pages visually inspected. No clipping or overlap. Template section geometry and preserve-only package parts unchanged. Linked contents bookmarks valid. Video, GitHub and team slots intentionally blank. Original retained unchanged.

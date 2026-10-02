@@ -1,0 +1,168 @@
+{
+  "input": "C:\\Users\\ad999\\Downloads\\Motorq_Hackathon_Solution_Document_Template.docx",
+  "fonts_by_char_count": {},
+  "direct_run_formatting_runs": 236,
+  "direct_paragraph_formatting_paragraphs": 342,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 1,
+      "text": "Connected Vehicle Intelligence Hackathon",
+      "style": "Normal"
+    },
+    {
+      "para_index": 3,
+      "text": "Submission Format: PDF (export of this document)",
+      "style": "Normal"
+    },
+    {
+      "para_index": 4,
+      "text": "To be Submitted by: [Team Name]",
+      "style": "Normal"
+    },
+    {
+      "para_index": 5,
+      "text": "Team Members & Roles: [Name \u2013 role \u2013 email, for each member]",
+      "style": "Normal"
+    },
+    {
+      "para_index": 6,
+      "text": "Problem Space Chosen: [e.g. predictive maintenance, EV charging, or your own]",
+      "style": "Normal"
+    },
+    {
+      "para_index": 7,
+      "text": "Repository URL: [Link]",
+      "style": "Normal"
+    },
+    {
+      "para_index": 8,
+      "text": "Demo Video URL (\u2264 5 min): [Link]",
+      "style": "Normal"
+    },
+    {
+      "para_index": 9,
+      "text": "Date of Submission: [DD/MM/YYYY]",
+      "style": "Normal"
+    },
+    {
+      "para_index": 11,
+      "text": "Table of Contents",
+      "style": "Normal"
+    },
+    {
+      "para_index": 55,
+      "text": "Primary User: Fleet manager, dealer, lender, driver or OEM \u2014 name one",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 56,
+      "text": "Secondary Stakeholders: Others affected by the problem",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 59,
+      "text": "Facts vs Assumptions: Separate what you know from what you assume",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 60,
+      "text": "Validation Method: Published study, public dataset, simulation, or interviews",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 65,
+      "text": "Scale of Impact: Who benefits, by how much, at 10K vs 100K vehicles",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 66,
+      "text": "Wider Impact: Safety, cost, environment or compliance, where relevant",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 70,
+      "text": "What It Does: Plain-language description of the solution",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 72,
+      "text": "Screenshot: At least one screenshot of the working product",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 75,
+      "text": "Customer Job: What the user is trying to get done",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 76,
+      "text": "Pain Relieved: What gets easier, cheaper or safer",
+      "style": "List Paragraph"
+    },
+    {
+      "para_index": 77,
+      "text": "Gain Created: New capability the user did not have",
+      "style": "List Paragraph"
+    }
+  ],
+  "examples": {
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 1,
+        "text": "Connected Vehicle Intelligence Hackathon",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "text": "Solution Document Template",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "text": "Submission Format: PDF (export of this document)",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "text": "To be Submitted by: [Team Name]",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "text": "Team Members & Roles: [Name \u2013 role \u2013 email, for each member]",
+        "style": "Normal"
+      }
+    ],
+    "direct_run_formatting": [
+      {
+        "para_index": 1,
+        "run_text": "Connected Vehicle Intelligence Hackathon",
+        "style": "Normal"
+      },
+      {
+        "para_index": 2,
+        "run_text": "Solution Document Template",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "run_text": "Submission Format: ",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "run_text": "PDF (export of this document)",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "run_text": "To be Submitted by: ",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}
